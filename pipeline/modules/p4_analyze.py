@@ -32,6 +32,7 @@ def analyze(ledger: Ledger, raw_items: list[RawItem], period: str) -> Analysis:
 def _build_context(ledger: Ledger, raw_items: list[RawItem]) -> str:
     # 数据面:台账数据点(精简,只留关键字段)
     points_block = "暂无数据点"
+    ledger_head = "## 数据台账"
     if ledger.points:
         lines = []
         for p in ledger.points:
@@ -40,9 +41,21 @@ def _build_context(ledger: Ledger, raw_items: list[RawItem]) -> str:
                 line += f" 同比{p.yoy}"
             if p.agency:
                 line += f" [{p.agency}]"
+            if p.region and p.region != "全国":
+                line += f" 〔{p.region}〕"
+            if p.llm_unverified:
+                line += " 〔未核验〕"
             line += f" {{src:{p.source_url}}}"
             lines.append(line)
         points_block = "\n".join(lines)
+        region_cnt = sum(1 for p in ledger.points if p.region and p.region != "全国")
+        unmarked = sum(1 for p in ledger.points if not p.region)
+        unverified = sum(1 for p in ledger.points if p.llm_unverified)
+        national = len(ledger.points) - region_cnt - unmarked
+        ledger_head = (
+            f"## 数据台账（全国口径 {national} 点 / 地域口径 {region_cnt} 点 / "
+            f"未标记 {unmarked} 点 / 未核验 {unverified} 点）"
+        )
 
     # 官媒面:新闻联播提要(已精简)+ 人民日报标题清单
     xwlb_blocks = []
@@ -56,7 +69,7 @@ def _build_context(ledger: Ledger, raw_items: list[RawItem]) -> str:
     rmrb_section = "、".join(rmrb_titles) if rmrb_titles else "暂无人民日报标题"
 
     return (
-        f"## 数据台账\n{points_block}\n\n"
+        f"{ledger_head}\n{points_block}\n\n"
         f"## 新闻联播提要\n{xwlb_section}\n\n"
         f"## 人民日报标题清单\n{rmrb_section}\n\n"
         "按规则做三维交叉研判,只输出 JSON。"

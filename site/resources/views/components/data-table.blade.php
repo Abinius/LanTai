@@ -7,7 +7,7 @@
 
 @props([
     'points',
-    'note' => '读法：数值保留原文口径，不做单位换算；同比为原文表述，"-" 表示原文未给。每个数据点可点回原文核对。',
+    'note' => '读法：数值保留原文口径，不做单位换算；"-" 表示原文未给。地区为该数据点的统计口径地域，"-" 表示原文未指明。每个数据点可点回原文核对。',
 ])
 
 @if(count($points) === 0)
@@ -21,6 +21,7 @@
           <th class="text-right py-3 pr-4 label-caption text-muted font-normal whitespace-nowrap">数值</th>
           <th class="text-right py-3 pr-4 label-caption text-muted font-normal whitespace-nowrap">同比</th>
           <th class="text-left py-3 pr-4 label-caption text-muted font-normal whitespace-nowrap">口径</th>
+          <th class="text-left py-3 pr-4 label-caption text-muted font-normal whitespace-nowrap">地区</th>
           <th class="text-left py-3 pr-4 label-caption text-muted font-normal whitespace-nowrap">机构</th>
           <th class="text-right py-3 label-caption text-muted font-normal whitespace-nowrap">原文</th>
         </tr>
@@ -35,13 +36,16 @@
               @endif
             </td>
             <td class="py-3 pr-4 text-right align-top tabular-nums font-semibold whitespace-nowrap">
-              {{ $p['value'] ?? '—' }}{{ $p['unit'] ? ' ' . e($p['unit']) : '' }}
+              {{ $p['value'] ?? '—' }}{{ $p['unit'] ? ' ' . $p['unit'] : '' }}
             </td>
             <td class="py-3 pr-4 text-right align-top tabular-nums text-ink-soft whitespace-nowrap">
               {{ $p['yoy'] ?? '—' }}
             </td>
             <td class="py-3 pr-4 text-ink-soft align-top">
               {{ $p['scope'] ?? '—' }}
+            </td>
+            <td class="py-3 pr-4 text-ink-soft align-top whitespace-nowrap">
+              {{ $p['region'] ?? '—' }}
             </td>
             <td class="py-3 pr-4 text-ink-soft align-top whitespace-nowrap">
               {{ $p['agency'] ?? '—' }}

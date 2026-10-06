@@ -68,9 +68,20 @@ class PublicationService
 
     /**
      * 单期完整数据：报告 + 研判 + 台账。缺失的文件降级为空结构。
+     *
+     * $period 直接拼进文件路径，只接受 YYYYMMDD 或 YYYYMMDD-YYYYMMDD，
+     * 纵深防御路径穿越（Laravel SanitizePath 已拦一层）。
+     *
+     * 台账只返回前 config('lantai.ledger_preview') 条供页面渲染——月报台账
+     * 可达数百条，全量渲染会让研判正文被表格淹没；完整台账留在内核产物。
+     * 溯源清单与可见台账保持一致，避免列出页面看不到的数据点。
      */
     public function show(string $period): ?array
     {
+        if (!self::isValidPeriod($period)) {
+            return null;
+        }
+
         $report = $this->readJson($this->reportFile($period));
         if ($report === null) {
             return null;
@@ -86,15 +97,17 @@ class PublicationService
         ];
 
         $points = $ledger['points'] ?? [];
+        $preview = array_slice($points, 0, (int) config('lantai.ledger_preview'));
 
         return [
-            'report'       => $report,
-            'analysis'     => $analysis,
-            'ledger'       => $ledger,
-            'points'       => $points,
-            'unverified'   => array_filter($points, fn ($p) => !empty($p['llm_unverified'])),
-            'sources'      => $this->sources($points, $analysis),
-            'period'       => $period,
+            'report'      => $report,
+            'analysis'    => $analysis,
+            'ledger'      => $ledger,
+            'points'      => $preview,
+            'point_total' => count($points),
+            'unverified'  => array_filter($points, fn ($p) => !empty($p['llm_unverified'])),
+            'sources'     => $this->sources($preview, $analysis),
+            'period'      => $period,
             'period_label' => self::periodLabel($period),
         ];
     }
@@ -175,6 +188,12 @@ class PublicationService
         $decoded = json_decode(File::get($path), true);
 
         return is_array($decoded) ? $decoded : null;
+    }
+
+    /** 期数格式：YYYYMMDD 或 YYYYMMDD-YYYYMMDD */
+    public static function isValidPeriod(string $period): bool
+    {
+        return (bool) preg_match('/^\d{8}(-\d{8})?$/', $period);
     }
 
     /** 区间标签：20261001-20261005 → 2026-10-01 ~ 2026-10-05 */

@@ -112,7 +112,9 @@
     <div class="hairline-b pb-3 mb-7 flex items-baseline gap-3">
       <span class="label-caption text-muted">附</span>
       <h2 class="font-display text-display-md font-bold text-ink">数据台账</h2>
-      <span class="label-caption text-muted ml-auto tabular-nums">{{ count($points) }} 条</span>
+      <span class="label-caption text-muted ml-auto tabular-nums">
+        共 {{ $point_total }} 条{{ $point_total > count($points) ? '，仅列前 ' . count($points) . ' 条' : '' }}
+      </span>
     </div>
     <x-data-table :points="$points" />
   </section>

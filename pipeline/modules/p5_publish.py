@@ -6,7 +6,7 @@ LLM 失败时用程序化兜底(标题取首条判断前 20 字,摘要拼前两�
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Optional
 
 from pipeline import llm
 from pipeline.config import PROMPTS_DIR, TEMPLATES_DIR
@@ -94,18 +94,24 @@ def _render_predictions(preds: list[Prediction]) -> str:
     return "\n".join(lines)
 
 
+def _cell(s: Optional[str]) -> str:
+    """Markdown 表格单元格:竖线与换行会打断表格结构。"""
+    return (s or "").replace("|", "/").replace("\n", " ").strip() or "—"
+
+
 def _render_data_table(points: list[DataPoint]) -> str:
     if not points:
         return "_本期台账为空_"
-    header = "| 指标 | 数值 | 单位 | 同比 | 机构 | 源 |"
-    sep = "|---|---|---|---|---|---|"
+    header = "| 指标 | 数值 | 单位 | 同比 | 地区 | 机构 | 源 |"
+    sep = "|---|---|---|---|---|---|---|"
     rows = []
     for p in points:
-        val = p.value or "—"
-        unit = p.unit or "—"
-        yoy = p.yoy or "—"
-        agency = p.agency or "—"
-        rows.append(f"| {p.indicator} | {val} | {unit} | {yoy} | {agency} | [↗]({p.source_url}) |")
+        # 未核验点没有结构化数值,把正则命中的原文放进数值列,否则整行只有个链接
+        val = p.value or (p.raw_text if p.llm_unverified else None)
+        rows.append(
+            f"| {_cell(p.indicator)} | {_cell(val)} | {_cell(p.unit)} | "
+            f"{_cell(p.yoy)} | {_cell(p.region)} | {_cell(p.agency)} | [↗]({p.source_url}) |"
+        )
     return "\n".join([header, sep, *rows])
 
 

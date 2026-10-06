@@ -35,6 +35,7 @@ class DataPoint:
     yoy: Optional[str] = None  # 同比
     mom: Optional[str] = None  # 环比
     pub_date: Optional[str] = None  # YYYYMMDD;解析不出留 None,禁止用抓取时间冒充
+    region: Optional[str] = None  # "全国" 或省级行政区名;抽不出留 None
     llm_unverified: bool = False  # LLM 失败时正则命中仍入台账,标记未核验
 
 

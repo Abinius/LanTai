@@ -117,6 +117,16 @@ def main() -> int:
         f"predictions={len(analysis.predictions)}"
     )
 
+    # 台账有数据而研判为空,说明 LLM 调用静默失败(chat_json 在限流/解析失败时
+    # 返回 None 而不抛)。此时出刊只会产出无判断的空壳报告并被站点当成正常期数,
+    # 故不落 report,留待 --reanalyze 重跑。台账本身为空则照常出刊(P5 自带兜底)。
+    if ledger.points and not (
+        analysis.core_judgments or analysis.structural_findings or analysis.predictions
+    ):
+        log("[p4] 研判为空但台账非空:判定 LLM 静默失败,跳过 P5 出刊。用 --reanalyze 重跑。")
+        log("=== 完成 退出码=1 ===")
+        return 1
+
     # P5:出刊引擎(模板驱动 + 变量注入)
     log("[p5] 开始出刊")
     try:

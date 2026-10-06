@@ -9,7 +9,7 @@ from __future__ import annotations
 import json
 import re
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
 from pipeline import llm
 from pipeline.contracts import DataPoint, Ledger, RawItem
@@ -92,12 +92,13 @@ def _llm_extract(item: RawItem, candidates: list[str]) -> list[DataPoint] | None
                 value=str(dp.get("value", "")),
                 source_url=item.url,
                 raw_text=_find_snippet(candidates, str(dp.get("value", ""))),
-                agency=str(dp.get("agency") or "") or "",
-                unit=dp.get("unit"),
-                scope=dp.get("scope"),
-                yoy=dp.get("yoy"),
-                mom=dp.get("mom"),
-                pub_date=dp.get("pub_date"),
+                agency=_clean(dp.get("agency")) or "",
+                unit=_clean(dp.get("unit")),
+                scope=_clean(dp.get("scope")),
+                yoy=_clean(dp.get("yoy")),
+                mom=_clean(dp.get("mom")),
+                pub_date=_clean(dp.get("pub_date")),
+                region=_normalize_region(_clean(dp.get("region"))),
             )
         )
     return points
@@ -125,3 +126,28 @@ def _find_snippet(candidates: list[str], value: str) -> str:
         if value in c:
             return c
     return candidates[0] if candidates else ""
+
+
+def _clean(val: Any) -> Optional[str]:
+    """LLM 偶尔输出字符串 "null" 而非 JSON null,统一归一为空。"""
+    if val is None:
+        return None
+    s = str(val).strip()
+    return s if s.lower() != "null" else None
+
+
+# 四个封闭类别值,不参与行政后缀归一(尤其"地区"是境外/跨区域类别,不能被截断)
+REGION_CATEGORIES = ("全国", "县域", "地区")
+# 行政区划后缀,长者优先。归一到裸省名(与台账中占多数的写法一致),
+# 否则同一数据在不同文章里会散成 海南/海南省、安徽/安徽省 两类标签。
+REGION_SUFFIXES = ("特别行政区", "自治区", "自治州", "省", "市")
+
+
+def _normalize_region(region: Optional[str]) -> Optional[str]:
+    """海南省→海南、内蒙古自治区→内蒙古;封闭类别与"浦东新区"等不受影响。"""
+    if not region or region in REGION_CATEGORIES:
+        return region
+    for suf in REGION_SUFFIXES:
+        if region.endswith(suf) and len(region) > len(suf):
+            return region[: -len(suf)]
+    return region

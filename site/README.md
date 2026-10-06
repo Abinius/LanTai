@@ -45,7 +45,7 @@ php artisan serve --host=127.0.0.1 --port=8000
 └── ledger.json     数据台账（P3）
 ```
 
-产物目录由 `LANQTAI_DATA_DIR` 指定（留空默认 `../pipeline/data`）。无 `report.json` 的期数（半成品）自动跳过。
+产物目录由 `LANTAI_DATA_DIR` 指定（留空默认 `../pipeline/data`）。无 `report.json` 的期数（半成品）自动跳过。
 
 新增字段时改内核 `pipeline/contracts.py`，站端不解析 Markdown——`report.md` 是文件交付物，站渲染结构化 JSON，避免多套同步链路。
 

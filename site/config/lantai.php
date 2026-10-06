@@ -14,14 +14,17 @@
 */
 
 return [
-    'brand'      => env('LANQTAI_BRAND', '兰台观局'),
-    'distributor' => env('LANQTAI_DISTRIBUTOR', '松山高参'),
-    'slogan'     => env('LANQTAI_SLOGAN', '兰台之上，静观天下局'),
-    'footer_note' => env('LANQTAI_FOOTER', '兰台观局 出品 · 松山高参 分发'),
+    'brand'      => env('LANTAI_BRAND', '兰台观局'),
+    'distributor' => env('LANTAI_DISTRIBUTOR', '松山高参'),
+    'slogan'     => env('LANTAI_SLOGAN', '兰台之上，静观天下局'),
+    'footer_note' => env('LANTAI_FOOTER', '兰台观局 出品 · 松山高参 分发'),
 
     /* 内核产物目录。留空默认 ../pipeline/data（与 site/ 同级的 pipeline/） */
-    'data_dir'   => env('LANQTAI_DATA_DIR'),
+    'data_dir'   => env('LANTAI_DATA_DIR'),
 
     /* 情报流每页篇数 */
-    'per_page'   => (int) env('LANQTAI_PER_PAGE', 12),
+    'per_page'   => (int) env('LANTAI_PER_PAGE', 12),
+
+    /* 报告详情页台账预览条数；完整台账留在内核产物，不在页面全量渲染 */
+    'ledger_preview' => (int) env('LANTAI_LEDGER_PREVIEW', 60),
 ];
