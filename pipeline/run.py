@@ -30,7 +30,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from pipeline.config import DATA_DIR, SOURCES, get_collector
 from pipeline.contracts import Ledger, RawItem
-from pipeline.modules import p1_interval, p3_extract, p4_analyze
+from pipeline.modules import p1_interval, p3_extract, p4_analyze, p5_publish
 
 
 def main() -> int:
@@ -117,7 +117,19 @@ def main() -> int:
         f"predictions={len(analysis.predictions)}"
     )
 
-    # M3 接入点:在此串联 p5_publish(analysis, ledger) → report.md
+    # P5:出刊引擎(模板驱动 + 变量注入)
+    log("[p5] 开始出刊")
+    try:
+        report = p5_publish.publish(analysis, ledger, raw_items, period)
+    except Exception as e:
+        log(f"[p5] 异常: {e}\n{traceback.format_exc()}")
+        report = p5_publish.Report(period=period, title=f"{period} 报告(出刊失败)", content_md="")
+
+    report_path = out_dir / "report.md"
+    report_meta_path = out_dir / "report.json"
+    report_path.write_text(report.content_md, encoding="utf-8")
+    report_meta_path.write_text(report.to_json(), encoding="utf-8")
+    log(f"[p5] 报告写入 {report_path} ({len(report.content_md)} 字, sources={report.source_count})")
 
     rc = 0 if not p2_fail else 1
     log(f"=== 完成 退出码={rc} ===")

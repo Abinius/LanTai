@@ -96,5 +96,32 @@ class Analysis:
         )
 
 
+@dataclass
+class Report:
+    """P5 出刊产物:深度研判报告 Markdown。"""
+
+    period: str
+    title: str
+    content_md: str
+    generated_at: str = ""
+    source_count: int = 0  # 引用的去重 source_url 数
+
+    def to_json(self) -> str:
+        import json
+
+        self.generated_at = datetime.now(timezone.utc).isoformat()
+        return json.dumps(
+            {
+                "period": self.period,
+                "title": self.title,
+                "generated_at": self.generated_at,
+                "source_count": self.source_count,
+                "content_md": self.content_md,
+            },
+            ensure_ascii=False,
+            indent=2,
+        )
+
+
 def raw_item_to_dict(item: RawItem) -> dict:
     return asdict(item)

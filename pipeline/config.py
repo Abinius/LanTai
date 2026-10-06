@@ -11,6 +11,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 PIPELINE_ROOT = Path(__file__).resolve().parent
 DATA_DIR = PIPELINE_ROOT / "data"
 PROMPTS_DIR = PIPELINE_ROOT / "prompts"
+TEMPLATES_DIR = PIPELINE_ROOT / "templates"
 
 # LLM 凭证文件(上级目录,已 gitignore)。优先环境变量覆盖。
 LLM_KEY_FILE = REPO_ROOT.parent / "llm key.txt"
