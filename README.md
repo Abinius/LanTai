@@ -17,8 +17,25 @@
 
 ## 当前状态
 
-**骨架未开始。** 上一代实现（AIHOT 引擎定制版）已于 2026-10-06 卸载，
+**M1–M4 已交付（2026-10-06）。** 上一代实现（AIHOT 引擎定制版）已于当日卸载，
 经验教训与决策记录见上级目录的 `开发日志.txt`，备份在上级目录的 `backup/`。
+
+| 里程碑 | 状态 | 内容 |
+|---|---|---|
+| M1 内核 MVP | ✅ | 采集→台账：p1 区间 + p2 双适配器（新闻联播/人民日报）+ p3 抽取 |
+| M2 研判 | ✅ | p4 三维交叉研判（数据×官媒×同频-背离） |
+| M3 出刊引擎 | ✅ | p5 模板驱动出刊，产出深度研判报告 |
+| M4 前端 | ✅ | Laravel 站（Signify 风格），读取内核产物渲染 |
+| M5 集成 | ⏳ | Signify 订阅板块（兴趣标签 + 摘要推送） |
+
+一键出刊 + 起站：
+
+```bash
+python pipeline/run.py --from 2026-10-01 --to 2026-10-05   # 内核：采集→研判→出刊
+cd site && php artisan serve --host=127.0.0.1 --port=8000   # 前端：情报流 + 报告详情
+```
+
+访问 `http://127.0.0.1:8000/`。
 
 ## 目录约定
 
@@ -26,7 +43,6 @@
 .
 ├── docs/          # 产品与设计文档（本仓库的规格来源）
 ├── pipeline/      # Python 内核：interval / collect / extract / analyze / publish
-├── site/          # Laravel 站点（Signify 风格 UI）
-├── templates/     # 出刊模板（report-template.md 等）
+├── site/          # Laravel 站点（Signify 风格 UI，读取 pipeline/data 渲染）
 └── data/          # 本地数据（不入库）
 ```

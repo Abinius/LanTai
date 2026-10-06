@@ -123,7 +123,7 @@ def main() -> int:
         report = p5_publish.publish(analysis, ledger, raw_items, period)
     except Exception as e:
         log(f"[p5] 异常: {e}\n{traceback.format_exc()}")
-        report = p5_publish.Report(period=period, title=f"{period} 报告(出刊失败)", content_md="")
+        report = p5_publish.Report(period=period, title=f"{period} 报告（出刊失败）", summary="", content_md="")
 
     report_path = out_dir / "report.md"
     report_meta_path = out_dir / "report.json"

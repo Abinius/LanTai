@@ -18,10 +18,11 @@ TEMPLATE = (TEMPLATES_DIR / "report-template.md").read_text(encoding="utf-8")
 
 def publish(analysis: Analysis, ledger: Ledger, raw_items: list[RawItem], period: str) -> Report:
     title, summary = _llm_title_summary(analysis, raw_items, period)
+    # LLM 失败兜底:标题取首条判断,摘要拼结构性发现
     if not title:
-        # 兜底:程序化标题+摘要
-        title = (analysis.core_judgments[0][:25] + "…") if analysis.core_judgments else f"{period} 周报"
-        summary = "；".join(analysis.structural_findings[:2]) or "数据不足,详见附表。"
+        title = (analysis.core_judgments[0][:25] + "…") if analysis.core_judgments else f"{period} 报告"
+    if not summary:
+        summary = "；".join(analysis.structural_findings[:2]) or "数据不足，详见附表。"
 
     core_md = _render_list(analysis.core_judgments) or "_暂无_"
     findings_md = _render_list(analysis.structural_findings) or "_暂无_"
@@ -42,7 +43,13 @@ def publish(analysis: Analysis, ledger: Ledger, raw_items: list[RawItem], period
     )
 
     source_count = len(_all_sources(ledger.points, analysis.predictions))
-    return Report(period=period, title=title, content_md=content, source_count=source_count)
+    return Report(
+        period=period,
+        title=title,
+        summary=summary,
+        content_md=content,
+        source_count=source_count,
+    )
 
 
 def _llm_title_summary(analysis: Analysis, raw_items: list[RawItem], period: str) -> tuple[str, str]:

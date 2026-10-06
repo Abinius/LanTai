@@ -11,6 +11,10 @@ secrets/
 .data/
 backup/
 data/
+database/*.sqlite
+database/*.sqlite-journal
+database/*.sqlite-shm
+database/*.sqlite-wal
 *.dump
 *.sql.gz
 *.tar.gz

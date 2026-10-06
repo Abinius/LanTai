@@ -102,6 +102,7 @@ class Report:
 
     period: str
     title: str
+    summary: str
     content_md: str
     generated_at: str = ""
     source_count: int = 0  # 引用的去重 source_url 数
@@ -114,6 +115,7 @@ class Report:
             {
                 "period": self.period,
                 "title": self.title,
+                "summary": self.summary,
                 "generated_at": self.generated_at,
                 "source_count": self.source_count,
                 "content_md": self.content_md,
