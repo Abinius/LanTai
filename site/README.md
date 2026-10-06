@@ -47,6 +47,8 @@ php artisan serve --host=127.0.0.1 --port=8000
 
 产物目录由 `LANTAI_DATA_DIR` 指定（留空默认 `../pipeline/data`）。无 `report.json` 的期数（半成品）自动跳过。
 
+`LANTAI_LEDGER_PREVIEW`（默认 60）控制报告详情页台账预览条数——月报台账可达数百条，全量渲染会让研判正文被表格淹没，完整台账留在内核产物 `report.md`。`LANTAI_PER_PAGE`（默认 12）控制情报流每页篇数。
+
 新增字段时改内核 `pipeline/contracts.py`，站端不解析 Markdown——`report.md` 是文件交付物，站渲染结构化 JSON，避免多套同步链路。
 
 ## 页面映射（Signify → 兰台观局，PRD §5.3）
