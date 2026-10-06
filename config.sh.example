@@ -1,0 +1,16 @@
+# 兰台观局 部署配置文件
+# 用法: sudo ./deploy.sh config.sh
+
+# 域名或服务器 IP
+DOMAIN="your-domain.com"
+
+# 数据库配置
+DB_NAME="lantai"
+DB_USER="lantai"
+DB_PASS="your_db_password"
+DB_ROOT_PASS="your_root_password"  # 如果已设置 MySQL root 密码
+
+# LLM API 密钥（从 llm key.txt 复制）
+# 同时写入 /var/www/llm key.txt（pipeline/config.py 读取路径）
+# 和 pipeline cron 的 LANTAI_LLM_KEY 环境变量（双保险）
+LLM_API_KEY="sk-..."
