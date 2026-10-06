@@ -100,13 +100,23 @@ install_packages() {
             yum install -y epel-release
             yum module enable php:8.2 -y 2>/dev/null || true
             yum install -y \
-                php php-fpm php-mysql php-xml php-curl php-mbstring \
-                php-zip php-gd php-bcmath php-intl php-sqlite3 \
+                php php-cli php-fpm php-mysqlnd php-xml php-curl php-mbstring \
+                php-zip php-gd php-bcmath php-intl php-opcache php-process php-sockets \
                 nginx "$DB_PKG" rsync git curl wget unzip \
                 python3 python3-pip
             ;;
     esac
     log "系统依赖安装完成"
+
+    # 校验 PHP 版本（Laravel 11 要求 8.2+）
+    local php_major php_minor
+    php_major=$(php -r 'echo PHP_MAJOR_VERSION;' 2>/dev/null || echo 0)
+    php_minor=$(php -r 'echo PHP_MINOR_VERSION;' 2>/dev/null || echo 0)
+    if [ "$php_major" -lt 8 ] || { [ "$php_major" -eq 8 ] && [ "$php_minor" -lt 2 ]; }; then
+        warn "PHP $php_major.$php_minor < 8.2，Laravel 11 可能无法运行。CentOS 8 可启用 Remi repo。"
+    else
+        info "PHP $php_major.$php_minor ✓"
+    fi
 }
 
 install_composer() {
@@ -146,6 +156,7 @@ copy_project() {
     mkdir -p "$WEB_ROOT/site" "$WEB_ROOT/pipeline"
     rsync -a --delete \
         --exclude='vendor/' --exclude='node_modules/' \
+        --exclude='.env' \
         --exclude='storage/framework/' --exclude='storage/logs/*' \
         --exclude='bootstrap/cache/*' \
         --exclude='data/' \
@@ -326,6 +337,7 @@ setup_cron() {
 EOF
 
     crontab "$cron_tmp" && rm -f "$cron_tmp"
+    touch /var/log/lantai-pipeline.log
     log "定时任务已配置（幂等，重跑不重复）"
 }
 
@@ -348,8 +360,12 @@ setup_firewall() {
                 firewall-cmd --permanent --add-service=ssh
                 firewall-cmd --permanent --add-service=http
                 firewall-cmd --permanent --add-service=https
-                firewall-cmd --reload
-                log "firewalld 已配置"
+                if systemctl is-active --quiet firewalld; then
+                    firewall-cmd --reload
+                    log "firewalld 已配置"
+                else
+                    log "firewalld 规则已写入（服务未运行，启动后生效）"
+                fi
             else
                 warn "firewalld 未安装，跳过"
             fi
