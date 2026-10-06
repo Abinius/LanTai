@@ -90,10 +90,14 @@ class _ArticleParser(HTMLParser):
 
     def handle_data(self, data):
         if self._depth > 0:
-            self._chunks.append(data)
+            text = data.strip()
+            # 只保留非空白文本;空白是 HTML 缩进/换行,拼接时会干扰段落分隔
+            if text:
+                self._chunks.append(text)
 
     def text(self) -> str:
-        return re.sub(r"\n{3,}", "\n\n", "".join(self._chunks)).strip()
+        # 段落间用换行分隔,不能直接 join——否则 <p>A</p><p>B</p> 会连成 "AB"
+        return re.sub(r"\n{3,}", "\n\n", "\n".join(self._chunks)).strip()
 
 
 class RmrbCollector(BaseCollector):

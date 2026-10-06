@@ -276,5 +276,51 @@ class TestPipelineLoaders(unittest.TestCase):
             self.assertIsNone(run._load_analysis(Path(d)))
 
 
+class TestArticleParser(unittest.TestCase):
+    """rmrb 正文容器解析:文本节点拼接不能丢掉分隔。"""
+
+    def _parse(self, html: str) -> str:
+        from pipeline.modules.p2_collect.rmrb import _ArticleParser
+        p = _ArticleParser()
+        p.feed(html)
+        return p.text()
+
+    def test_no_whitespace_between_tags(self):
+        # 紧凑 HTML:标签间无空白,join 不能把两段连成 "第一段第二段"
+        text = self._parse('<div id="ozoom"><p>第一段</p><p>第二段</p></div>')
+        self.assertIn("第一段", text)
+        self.assertIn("第二段", text)
+        self.assertNotIn("第一段第二段", text,
+                         "两段之间必须有分隔,否则 LLM 抽取会连词错乱")
+
+    def test_whitespace_only_preserves_structure(self):
+        # 带缩进的 HTML:换行和缩进是 HTML 里的空白文本节点,
+        # 拼接后至少要能区分出两段
+        text = self._parse(
+            '<div id="ozoom">\n'
+            '    <p>第一段</p>\n'
+            '    <p>第二段</p>\n'
+            '</div>'
+        )
+        self.assertIn("第一段", text)
+        self.assertIn("第二段", text)
+        self.assertNotIn("第一段第二段", text)
+
+    def test_text_outside_container_excluded(self):
+        text = self._parse(
+            '<html><head><title>标题</title></head>'
+            '<body><div>外部</div>'
+            '<div id="ozoom">正文</div></body></html>'
+        )
+        self.assertEqual(text.strip(), "正文")
+
+    def test_collapse_triple_newlines(self):
+        text = self._parse(
+            '<div id="ozoom">\n\n\n\n\n<p>正文</p>\n\n\n\n\n</div>'
+        )
+        self.assertIn("正文", text)
+        self.assertNotIn("\n\n\n", text)
+
+
 if __name__ == "__main__":
     unittest.main()
