@@ -44,7 +44,8 @@
   M2 研判        ✅ 2026-10-06
   M3 出刊引擎    ✅ 2026-10-06
   M4 前端        ✅ 2026-10-06
-  M5 集成        ⏳ 未开始（Signify 订阅板块 + auth 重建）
+  M5 集成        🟡 2026-10-06：auth 重建 + 订阅设置 + 我的情报已交付（拉取式），
+                     推送通道与大陆 VPS 部署未做
 
 目录：
   pipeline/   Python 内核（五阶段：interval/collect/extract/analyze/publish）
@@ -54,6 +55,7 @@
 
 一键跑通：
   python pipeline/run.py --from 2026-10-01 --to 2026-10-05
+  cd site && touch database/database.sqlite && php artisan migrate
   cd site && php artisan serve --host=127.0.0.1 --port=8000
 
 内核产物（pipeline/data/<period>/）：
@@ -462,6 +464,93 @@ M5 · Signify 订阅板块（兴趣标签 + 摘要推送）
   · yoy 与 value 偶有重复填充（"社会消费零售总额 2.5%，同比 2.5%"）。
   · 开发日志第 10 节的 M5 五条前置未动（auth / subscriptions 表 / 标签 /
     推送 / 部署），本次只做内核与前端的内容层前置。
+
+
+================================================================
+12. M5 订阅板块（兴趣标签 + 我的情报）（2026-10-06）
+================================================================
+
+12.1 内核侧：期数标签的来源
+  · report.json 新增 domains / regions 两列（contracts.Report + p5_publish._tags()）：
+    领域由 p3 的 CATEGORY_KEYWORDS 关键词命中派生（九类，单一事实来源），
+    地区直接取台账 region 字段（全国/省级裸名/地区/县域）。确定性计算，无 LLM。
+  · run.py 新增 --republish：跳过 P2/P3/P4，只重跑 P5。给已有期数补标签用
+    （P5 仅一次标题/摘要的短 LLM 调用，实测 4 秒）。
+  · 雷 Q：_load_ledger 读回台账时漏了 region 字段。--reanalyze / --republish 会把
+    所有点的 region 丢掉，重跑后报告地区列全空、report.json 地区标签为空数组，
+    订阅的地区轴静默失效。已补 region，并删掉同函数里冗余的局部 DataPoint import。
+  · 已对现有两期执行 --republish：
+      20261001-20261005  domains=投资/就业/增长/外贸/消费/金融
+                         regions=全国/山东/内蒙古
+      20260907-20261006  domains=九类全中  regions=20 个（含"南京""地区"）
+
+12.2 站点侧：auth + 订阅设置 + 我的情报
+  · auth 重建：users / password_reset_tokens / subscriptions 三张 migration；
+    User + Subscription 模型；注册/登录/找回密码四个控制器 + LoginRequest；
+    auth.php 路由。注册即登录、不发验证邮件（站内无 SMTP 收件场景）。
+    首注册落地页改 /subscription——不设标签「我的情报」永远是空的。
+  · 订阅设置（/subscription）：领域 × 地区两轴。候选来自 SubscriptionService 常量，
+    DOMAINS 与内核 CATEGORY_KEYWORDS 九类一致，REGIONS 与台账 region 取值一致。
+    保存经 normalize() 过滤：不在候选表的值丢弃、去重保序，脏输入不入库。
+    每用户一条订阅 upsert。
+  · 我的情报（/briefing）：拉取式浏览。匹配规则两条轴 AND、轴内 OR，某轴不选即不限。
+    briefingsFor() 在每条命中摘要上附 matched 键标明具体命中项，卡片把命中标签
+    高亮（accent 描边），其余普通徽章。
+  · 报告卡复用：新增可选 domains/regions/matched_* 四个 props，情报流与我的情报
+    共用同一张卡；标签最多显示 6 个，其余折叠成计数。
+  · 导航：菜单顶部按登录态分流（访客看登录/加入，已登录看邮箱 + 退出），
+    我的情报/订阅设置仅登录后可见。
+
+12.3 新踩雷
+  雷 R：Laravel 11 没有 `auth:` 路由参数。上一轮 bootstrap/app.php 写成了
+     `withRouting(web: ..., auth: routes/auth.php)`，PHP 直接抛
+     "Unknown named parameter $auth"——整个站点一次都启动不了，
+     artisan / serve / phpunit 全挂，而且没有任何提示说认证路由没注册。
+     对策：web 参数本身接受数组，改成
+     `web: [routes/web.php, routes/auth.php]`。15 条路由全通。
+     教训：加新路由文件后必须 `php artisan route:list` 核一遍。
+  雷 S：briefingsFor 重写时把轴间 AND 写成 OR——「两轴都命中或任一轴命中即入选」，
+     期数只要领域命中就进「我的情报」，地区不符也漏进来。
+     是本轮新增的测试抓出来的（期望 1 期实际 2 期）。
+     对策：「选了却没命中的轴直接淘汰，没选的轴不限」，语义写进函数注释。
+  雷 T：本地 SQLite 库文件从未创建（.env 只写了 DB_CONNECTION=sqlite，
+     注释说留空 DB_DATABASE 即默认 database.sqlite，但文件要自己 touch）。
+     注册请求直接 500。auth 上一轮全程没被浏览器验证过，所以一直没暴露。
+     对策：`touch database/database.sqlite && php artisan migrate`。
+  雷 U：phpunit.xml 声明了 tests/Unit 目录，但仓库里根本没有 tests/，
+     PHPUnit 直接退出且只报一行 "Test directory not found"。
+     对策：删掉空的 Unit testsuite（内核单元测试在 pipeline/tests，是 Python）。
+
+12.4 顺手清理
+  · 删 login / forgot-password 视图里各自的 session('status') 提示框——布局已有
+    全局 flash 组件，forgot-password 页原本会渲染两遍。
+    PasswordResetLinkController 改用 with('success', ...)，由全局 flash 按成功色渲染。
+  · Signify 品牌残留清零：session cookie signify_session → lantai_session、
+    DB_DATABASE 默认 signify → lantai、REDIS_PREFIX signify_ → lantai_、
+    package.json name signify → lantai-guanju（lock 同步）。
+  · .env.example 补 LANTAI_LEDGER_PREVIEW；README 补认证/订阅章节、路由表、测试说明。
+  · site/database/data/（Signify 的 artists.json + avatars 种子数据）零引用，
+    属可删遗留；本机删除被安全策略拦下，未动，需人工确认。
+
+12.5 测试（此前站点无测试套件）
+  · tests/TestCase.php + Feature/SubscriptionTest（7 例）+ Feature/BriefingTest（5 例）
+    = 13 例 41 断言全绿（sqlite :memory: + RefreshDatabase）。
+  · BriefingTest 用假的 report.json/analysis.json/ledger.json 顶替内核产物
+    （写进 storage/testing/data，tearDown 删除），覆盖「产物标签 → 匹配 → 页面渲染」
+    整条链路，不依赖真实 data/ 目录。
+  · 实测浏览器链路（curl + cookie）：注册 → 302 /subscription → 存标签
+    （投资 + 山东）→ /briefing 命中 2 期，卡上命中标签 accent 高亮；
+    首页卡片带标签但不高亮；/subscription 勾选状态回显正确（43 个选项）；
+    访客访问 /subscription、/briefing 均 302 到 /login；/logout 仅 POST（GET 405）。
+
+12.6 遗留
+  · 推送通道未接：PRD §3.9 的「推送到我的情报」目前是拉取式（无 SMTP、无推送任务）。
+    subscriptions 表因此暂未建 channel / freq 列，推送落地时增量 migration 即可。
+  · 部署到大陆 VPS 未做（第 10 节 M5 第 5 条）。
+  · region 粒度问题仍在：台账出现"南京"（地市）与"江苏"（省）混用，
+    REGIONS 候选表里没有"南京"，该标签无法订阅。地市→省映射表仍缺。
+  · report.md 全量台账 10.9 万字（研判占比 2%），作为文件交付物可接受。
+  · 情报后台（PRD §3.7，信源管理/诊断/评测）未建。
 
 
 ================================================================

@@ -3,7 +3,8 @@
 用法:
     python pipeline/run.py --from 2026-10-01 --to 2026-10-05
     python pipeline/run.py --days 7
-    python pipeline/run.py --reextract  # 跳过 P2,从已有 raw 重跑 P3
+    python pipeline/run.py --reextract   # 跳过 P2,从已有 raw 重跑 P3
+    python pipeline/run.py --republish   # 跳过 P2/P3/P4,只重跑 P5 出刊
 
 退出码:0=全成功;1=部分失败但 raw 已落盘;2=参数或凭证错误。
 M2 接入点:在 P3 之后串联 p4_analyze;M3 再接 p5_publish。
@@ -29,7 +30,7 @@ if hasattr(sys.stdout, "reconfigure"):
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from pipeline.config import DATA_DIR, SOURCES, get_collector
-from pipeline.contracts import Ledger, RawItem
+from pipeline.contracts import Analysis, DataPoint, Ledger, Prediction, RawItem
 from pipeline.modules import p1_interval, p3_extract, p4_analyze, p5_publish
 
 
@@ -40,7 +41,10 @@ def main() -> int:
     parser.add_argument("--days", type=int, help="最近 N 天(与 --from/--to 互斥)")
     parser.add_argument("--reextract", action="store_true", help="跳过 P2,从已有 raw 重跑 P3")
     parser.add_argument("--reanalyze", action="store_true", help="跳过 P2/P3,从已有 ledger+raw 重跑 P4")
+    parser.add_argument("--republish", action="store_true", help="跳过 P2/P3/P4,从已有 ledger+analysis 只重跑 P5")
     args = parser.parse_args()
+
+    skip_map = {"republish": "P2/P3/P4", "reanalyze": "P2/P3", "reextract": "P2"}
 
     try:
         days = p1_interval.parse_range(args)
@@ -61,8 +65,12 @@ def main() -> int:
     log(f"=== 兰台观局 v3.0 开跑 period={period} days={len(days)} ===")
 
     p2_fail = False
-    run_p3 = not args.reanalyze
-    if not args.reextract and not args.reanalyze:
+    run_p3 = not (args.reanalyze or args.republish)
+    run_p4 = not args.republish
+    if args.reextract or args.reanalyze or args.republish:
+        flag = "republish" if args.republish else ("reanalyze" if args.reanalyze else "reextract")
+        log(f"--{flag}:跳过 {skip_map[flag]},使用已有数据")
+    else:
         for date_str in days:
             for source in SOURCES:
                 collector = get_collector(source)
@@ -76,9 +84,6 @@ def main() -> int:
                     log(line)
                 _write_raw(out_dir, source, date_str, items)
                 log(f"[p2/{source}/{date_str}] 落盘 {len(items)} 条")
-    else:
-        skipped = "P2/P3" if args.reanalyze else "P2"
-        log(f"--{'reanalyze' if args.reanalyze else 'reextract'}:跳过 {skipped},使用已有数据")
 
     # P3:从 raw 落盘读回,独立可重跑
     raw_items = _load_all_raw(out_dir)
@@ -96,22 +101,29 @@ def main() -> int:
     else:
         ledger = _load_ledger(out_dir)
         if ledger is None:
-            log("[p4] 无 ledger.json,无法研判")
+            log("[p3] 无 ledger.json,无法研判/出刊")
             return 2
         log(f"[p4] 读回 ledger {len(ledger.points)} 点,跳过 P3")
 
     # P4:三维交叉研判
-    log(f"[p4] 读回 {len(raw_items)} 条 raw,开始研判")
-    try:
-        analysis = p4_analyze.analyze(ledger, raw_items, period)
-    except Exception as e:
-        log(f"[p4] 异常: {e}\n{traceback.format_exc()}")
-        analysis = p4_analyze.Analysis(period=period)
+    if run_p4:
+        log(f"[p4] 读回 {len(raw_items)} 条 raw,开始研判")
+        try:
+            analysis = p4_analyze.analyze(ledger, raw_items, period)
+        except Exception as e:
+            log(f"[p4] 异常: {e}\n{traceback.format_exc()}")
+            analysis = p4_analyze.Analysis(period=period)
 
-    analysis_path = out_dir / "analysis.json"
-    analysis_path.write_text(analysis.to_json(), encoding="utf-8")
+        analysis_path = out_dir / "analysis.json"
+        analysis_path.write_text(analysis.to_json(), encoding="utf-8")
+    else:
+        analysis = _load_analysis(out_dir)
+        if analysis is None:
+            log("[p5] 无 analysis.json,无法出刊")
+            return 2
+
     log(
-        f"[p4] 研判写入 {analysis_path} "
+        f"[p4] 研判 "
         f"judgments={len(analysis.core_judgments)} "
         f"findings={len(analysis.structural_findings)} "
         f"predictions={len(analysis.predictions)}"
@@ -165,8 +177,6 @@ def _load_ledger(out_dir: Path) -> Ledger | None:
         d = json.loads(fp.read_text(encoding="utf-8"))
     except json.JSONDecodeError:
         return None
-    from pipeline.contracts import DataPoint
-
     points = [
         DataPoint(
             indicator=p.get("indicator", ""),
@@ -179,12 +189,36 @@ def _load_ledger(out_dir: Path) -> Ledger | None:
             yoy=p.get("yoy"),
             mom=p.get("mom"),
             pub_date=p.get("pub_date"),
+            region=p.get("region"),
             llm_unverified=p.get("llm_unverified", False),
         )
         for p in d.get("points", [])
         if isinstance(p, dict)
     ]
     return Ledger(period=d.get("period", ""), points=points)
+
+
+def _load_analysis(out_dir: Path) -> Analysis | None:
+    fp = out_dir / "analysis.json"
+    if not fp.exists():
+        return None
+    try:
+        d = json.loads(fp.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return None
+    return Analysis(
+        period=d.get("period", ""),
+        core_judgments=[j for j in d.get("core_judgments", []) if isinstance(j, str)],
+        structural_findings=[f for f in d.get("structural_findings", []) if isinstance(f, str)],
+        predictions=[
+            Prediction(
+                text=p["text"],
+                data_refs=[r for r in p.get("data_refs", []) if isinstance(r, str)],
+            )
+            for p in d.get("predictions", [])
+            if isinstance(p, dict) and isinstance(p.get("text"), str) and p["text"]
+        ],
+    )
 
 
 def _load_all_raw(out_dir: Path) -> list[RawItem]:

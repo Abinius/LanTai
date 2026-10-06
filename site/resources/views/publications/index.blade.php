@@ -57,7 +57,9 @@
           :source_count="$pub['source_count']"
           :judgment_count="$pub['judgment_count']"
           :prediction_count="$pub['prediction_count']"
-          :point_count="$pub['point_count']" />
+          :point_count="$pub['point_count']"
+          :domains="$pub['domains']"
+          :regions="$pub['regions']" />
       @endforeach
     </div>
   @endif

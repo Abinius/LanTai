@@ -64,12 +64,45 @@
     </div>
     <nav class="flex-1 overflow-y-auto">
       <div class="max-w-5xl mx-auto w-full px-6 py-10">
+        @auth
+          <div class="flex items-center justify-between pb-6 border-b border-hairline">
+            <span class="label-caption text-muted">{{ auth()->user()->email }}</span>
+            <form method="POST" action="{{ route('logout') }}">
+              @csrf
+              <button type="submit" class="label-caption text-muted hover:text-accent transition-colors">退出登录</button>
+            </form>
+          </div>
+        @else
+          <div class="flex items-center justify-between pb-6 border-b border-hairline">
+            <span class="label-caption text-muted">访客</span>
+            <div class="flex items-center gap-5">
+              <a href="{{ route('login') }}" @click="menuOpen = false"
+                 class="label-caption text-ink hover:text-accent transition-colors">登录</a>
+              <a href="{{ route('register') }}" @click="menuOpen = false"
+                 class="label-caption text-accent">加入</a>
+            </div>
+          </div>
+        @endauth
+
         <div class="space-y-2">
           <a href="{{ route('publications.index') }}" @click="menuOpen = false"
              class="group block py-4 border-b border-hairline">
             <span class="font-display text-display-md font-bold text-ink group-hover:text-accent transition-colors">情报流</span>
             <span class="block label-caption text-muted mt-1">深度研判报告，逐期翻阅</span>
           </a>
+
+          @auth
+            <a href="{{ route('briefing.index') }}" @click="menuOpen = false"
+               class="group block py-4 border-b border-hairline">
+              <span class="font-display text-display-md font-bold text-ink group-hover:text-accent transition-colors">我的情报</span>
+              <span class="block label-caption text-muted mt-1">按兴趣标签命中的期数</span>
+            </a>
+            <a href="{{ route('subscription.edit') }}" @click="menuOpen = false"
+               class="group block py-4 border-b border-hairline">
+              <span class="font-display text-display-md font-bold text-ink group-hover:text-accent transition-colors">订阅设置</span>
+              <span class="block label-caption text-muted mt-1">兴趣标签：领域 × 地区</span>
+            </a>
+          @endauth
         </div>
       </div>
     </nav>

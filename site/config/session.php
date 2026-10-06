@@ -16,7 +16,7 @@ return [
     'table' => 'sessions',
     'store' => env('SESSION_STORE'),
     'lottery' => [2, 100],
-    'cookie' => env('SESSION_COOKIE', 'signify_session'),
+    'cookie' => env('SESSION_COOKIE', 'lantai_session'),
     'path' => '/',
     'domain' => env('SESSION_DOMAIN'),
     'secure' => env('SESSION_SECURE_COOKIE'),

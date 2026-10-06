@@ -11,6 +11,7 @@ from typing import Optional
 from pipeline import llm
 from pipeline.config import PROMPTS_DIR, TEMPLATES_DIR
 from pipeline.contracts import Analysis, DataPoint, Ledger, Prediction, RawItem, Report
+from pipeline.modules.p3_extract import matched_categories
 
 PUBLISH_PROMPT = (PROMPTS_DIR / "publish.md").read_text(encoding="utf-8")
 TEMPLATE = (TEMPLATES_DIR / "report-template.md").read_text(encoding="utf-8")
@@ -43,12 +44,15 @@ def publish(analysis: Analysis, ledger: Ledger, raw_items: list[RawItem], period
     )
 
     source_count = len(_all_sources(ledger.points, analysis.predictions))
+    domains, regions = _tags(ledger.points)
     return Report(
         period=period,
         title=title,
         summary=summary,
         content_md=content,
         source_count=source_count,
+        domains=domains,
+        regions=regions,
     )
 
 
@@ -132,6 +136,23 @@ def _all_sources(points: list[DataPoint], preds: list[Prediction]) -> list[str]:
             if r and r not in seen:
                 seen.append(r)
     return seen
+
+
+def _tags(points: list[DataPoint]) -> tuple[list[str], list[str]]:
+    """从台账派生订阅标签:领域(关键词命中)与地区(台账 region 字段)。
+
+    领域与地区是订阅匹配的两条轴(PRD §3.9 兴趣标签 = 领域 × 地区)。
+    地区直接取台账字段,领域复用抽取阶段的关键词分类,单一事实来源。
+    """
+    domains: list[str] = []
+    regions: list[str] = []
+    for p in points:
+        for d in matched_categories(f"{p.indicator} {p.raw_text}"):
+            if d not in domains:
+                domains.append(d)
+        if p.region and p.region not in regions:
+            regions.append(p.region)
+    return domains, regions
 
 
 def _period_label(period: str) -> str:

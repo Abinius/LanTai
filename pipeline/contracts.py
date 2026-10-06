@@ -107,6 +107,8 @@ class Report:
     content_md: str
     generated_at: str = ""
     source_count: int = 0  # 引用的去重 source_url 数
+    domains: list[str] = field(default_factory=list)  # 命中的领域标签(九类),供订阅匹配
+    regions: list[str] = field(default_factory=list)  # 命中的地区口径(全国/省级/地区/县域)
 
     def to_json(self) -> str:
         import json
@@ -119,6 +121,8 @@ class Report:
                 "summary": self.summary,
                 "generated_at": self.generated_at,
                 "source_count": self.source_count,
+                "domains": self.domains,
+                "regions": self.regions,
                 "content_md": self.content_md,
             },
             ensure_ascii=False,

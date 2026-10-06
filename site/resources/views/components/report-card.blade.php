@@ -3,7 +3,10 @@
   替代 Signify 的"人物卡"：无封面，用大标题 + 眉标日期做主视觉，保持刊物感。
 
   props: period, period_label, title, summary,
-         source_count, judgment_count, prediction_count, point_count
+         source_count, judgment_count, prediction_count, point_count,
+         domains, regions（订阅标签，情报流与我的情报共用）,
+         matched_domains, matched_regions（我的情报专用，高亮命中的标签）
+  标签最多显示 6 个，其余折叠为计数，避免卡片被标签淹没。
 --}}
 
 @props([
@@ -15,7 +18,18 @@
     'judgment_count' => 0,
     'prediction_count' => 0,
     'point_count' => 0,
+    'domains' => null,
+    'regions' => null,
+    'matched_domains' => null,
+    'matched_regions' => null,
 ])
+
+@php
+    $tags = array_merge(
+        array_map(fn (string $t) => [$t, in_array($t, $matched_domains ?? [], true)], $domains ?? []),
+        array_map(fn (string $t) => [$t, in_array($t, $matched_regions ?? [], true)], $regions ?? [])
+    );
+@endphp
 
 <a href="{{ route('publications.show', $period) }}"
    class="group block h-full border border-hairline bg-surface p-7 flex flex-col
@@ -32,6 +46,17 @@
 
   @if($summary)
     <p class="mt-4 text-sm text-ink-soft leading-relaxed line-clamp-3">{{ $summary }}</p>
+  @endif
+
+  @if(! empty($tags))
+    <div class="mt-5 flex flex-wrap gap-1.5">
+      @foreach(array_slice($tags, 0, 6) as [$tag, $hit])
+        <x-badge :emphasized="$hit">{{ $tag }}</x-badge>
+      @endforeach
+      @if(count($tags) > 6)
+        <x-badge>+{{ count($tags) - 6 }}</x-badge>
+      @endif
+    </div>
   @endif
 
   <div class="mt-auto pt-7 flex flex-wrap gap-2">

@@ -108,16 +108,56 @@ class TestContracts(unittest.TestCase):
         self.assertEqual(data["core_judgments"], ["j1", "j2"])
         self.assertEqual(data["predictions"][0]["data_refs"], ["http://u1"])
 
-    def test_report_json_has_summary(self):
-        r = Report(period="p", title="标题", summary="摘要", content_md="# 标题")
+    def test_report_json_has_summary_and_tags(self):
+        r = Report(period="p", title="标题", summary="摘要", content_md="# 标题",
+                   domains=["投资"], regions=["全国"])
         data = json.loads(r.to_json())
         self.assertEqual(set(data.keys()),
-                         {"period", "title", "summary", "generated_at", "source_count", "content_md"})
+                         {"period", "title", "summary", "generated_at", "source_count",
+                          "domains", "regions", "content_md"})
+        self.assertEqual(data["domains"], ["投资"])
+        self.assertEqual(data["regions"], ["全国"])
+        # 订阅标签缺省为空数组,不省键:站端 summaries() 直接读这两个字段
+        data2 = json.loads(Report(period="p", title="t", summary="s",
+                                  content_md="").to_json())
+        self.assertEqual(data2["domains"], [])
+        self.assertEqual(data2["regions"], [])
 
     def test_raw_item_defaults(self):
         item = RawItem(source="rmrb", date="20261005", title="t", url="u", body="b")
         self.assertIsNone(item.published_at)
         self.assertEqual(item.fetched_bytes, 0)
+
+
+class TestReportTags(unittest.TestCase):
+    """P5 订阅标签:站端「我的情报」匹配的唯一数据来源。"""
+
+    def _points(self):
+        return [
+            DataPoint(indicator="社会消费品零售总额", value="2.5", source_url="u1",
+                      raw_text="社会消费品零售总额增长2.5%", region="全国"),
+            DataPoint(indicator="固定资产投资", value="5", source_url="u2",
+                      raw_text="固定资产投资增长5%", region="山东"),
+            DataPoint(indicator="县域产值", value="1", source_url="u3",
+                      raw_text="县域产值1亿元", region="县域"),
+            DataPoint(indicator="县域产值", value="2", source_url="u4",
+                      raw_text="重复点", region="县域"),
+        ]
+
+    def test_domains_and_regions(self):
+        from pipeline.modules.p5_publish import _tags
+
+        domains, regions = _tags(self._points())
+
+        self.assertIn("消费", domains)
+        self.assertIn("投资", domains)
+        # 地区去重保序
+        self.assertEqual(regions, ["全国", "山东", "县域"])
+
+    def test_empty_points(self):
+        from pipeline.modules.p5_publish import _tags
+
+        self.assertEqual(_tags([]), ([], []))
 
 
 if __name__ == "__main__":

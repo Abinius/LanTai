@@ -136,9 +136,12 @@ class PublicationService
     }
 
     /**
-     * 报告摘要（列表页用），含 searchable 供搜索拼接。
+     * 报告摘要（列表页与订阅匹配用），含 searchable 供搜索拼接。
+     *
+     * domains / regions 来自内核产物 report.json，是订阅匹配的依据。
+     * 未带标签的旧期数为空数组——任何非空订阅都不会命中它。
      */
-    protected function summaries(): \Illuminate\Support\Collection
+    public function summaries(): \Illuminate\Support\Collection
     {
         return collect($this->periods())->map(function (string $period) {
             $report = $this->readJson($this->reportFile($period)) ?? [];
@@ -157,6 +160,8 @@ class PublicationService
                 'prediction_count' => count($analysis['predictions'] ?? []),
                 'point_count' => count($points),
                 'unverified_count' => count(array_filter($points, fn ($p) => !empty($p['llm_unverified']))),
+                'domains' => $report['domains'] ?? [],
+                'regions' => $report['regions'] ?? [],
                 'searchable' => $this->searchable($report, $analysis, $points),
             ];
         });

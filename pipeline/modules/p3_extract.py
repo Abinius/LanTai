@@ -15,7 +15,7 @@ from pipeline import llm
 from pipeline.contracts import DataPoint, Ledger, RawItem
 from pipeline.config import PROMPTS_DIR
 
-# 九类指标关键词(正则预筛用,只判断是否值得送 LLM)
+# 九类指标关键词。同时服务两处:正则预筛(是否值得送 LLM)与订阅领域标签派生。
 CATEGORY_KEYWORDS = {
     "增长": r"GDP|生产总值|增加值|增长|增速",
     "投资": r"固定资产投资|投资|招商引资",
@@ -33,6 +33,11 @@ _NUMBER = re.compile(r"\d+(?:\.\d+)?\s*%|(?:\d+(?:\.\d+)?)\s*(?:万亿元|亿元
 _SENT_SPLIT = re.compile(r"[。！？；\n]+")
 
 EXTRACT_PROMPT = (PROMPTS_DIR / "extract.md").read_text(encoding="utf-8")
+
+
+def matched_categories(text: str) -> list[str]:
+    """返回文本命中的领域类别,保持注册顺序。订阅领域标签的事实来源。"""
+    return [name for name, pattern in CATEGORY_KEYWORDS.items() if re.search(pattern, text)]
 
 
 def extract(raw_items: list[RawItem], period: str) -> Ledger:
