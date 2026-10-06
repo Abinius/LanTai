@@ -1,0 +1,51 @@
+# 密钥与本地配置（绝不入库）
+.env
+.env.*
+!.env.example
+llm key.txt
+*.key
+*.pem
+secrets/
+
+# 数据与备份（二进制大文件，不进版本库）
+.data/
+backup/
+data/
+*.dump
+*.sql.gz
+*.tar.gz
+*.zip
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+
+# Laravel / PHP
+vendor/
+node_modules/
+bootstrap/cache/*
+storage/framework/cache/*
+storage/framework/sessions/*
+storage/framework/views/*
+storage/logs/*
+public/build/
+public/hot
+public/storage
+
+# 出刊产物（可再生成）
+reports/*.html
+reports/*.pdf
+reports/*.docx
+
+# 编辑器 / 系统
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+desktop.ini
+*.tmp
+*.bak
