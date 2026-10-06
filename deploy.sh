@@ -24,6 +24,8 @@ DB_USER="lantai"
 DB_PASS="lantai_password"
 DB_ROOT_PASS=""
 LLM_API_KEY=""
+LLM_BASE_URL=""
+LLM_MODEL=""
 
 # OS 派生变量（由 detect_os 填充）
 OS_ID=""
@@ -209,6 +211,7 @@ QUEUE_CONNECTION=sync
 
 LANTAI_DATA_DIR=
 LANTAI_LEDGER_PREVIEW=60
+LANTAI_OG_IMAGE=android-chrome-512x512.png
 EOF
     log ".env 已写入"
 
@@ -327,12 +330,15 @@ setup_cron() {
     crontab -l 2>/dev/null | sed '/# BEGIN lantai/,/# END lantai/d' > "$cron_tmp"
 
     local llm_env=""
-    [ -n "$LLM_API_KEY" ] && llm_env="LANTAI_LLM_KEY=\"$LLM_API_KEY\" "
+    [ -n "$LLM_API_KEY" ]  && llm_env="LANTAI_LLM_KEY=\"$LLM_API_KEY\" "
+    [ -n "$LLM_BASE_URL" ] && llm_env+="LANTAI_LLM_BASE_URL=\"$LLM_BASE_URL\" "
+    [ -n "$LLM_MODEL" ]    && llm_env+="LANTAI_LLM_MODEL=\"$LLM_MODEL\" "
 
     cat >> "$cron_tmp" << EOF
 # BEGIN lantai
 * * * * * cd $WEB_ROOT/site && php artisan schedule:run >> /dev/null 2>&1
 0 8 * * * $llm_env cd $WEB_ROOT && $PYTHON_BIN pipeline/run.py --days 1 >> /var/log/lantai-pipeline.log 2>&1
+0 8 * * 1 $llm_env cd $WEB_ROOT && $PYTHON_BIN pipeline/run.py --days 7 >> /var/log/lantai-pipeline.log 2>&1
 # END lantai
 EOF
 
@@ -388,6 +394,8 @@ load_config() {
         DB_PASS="${DB_PASS_INPUT:-lantai_password}"
         read -rp "MySQL root 密码 (如已设置): " DB_ROOT_PASS
         read -rp "LLM API 密钥 (可稍后配置): " LLM_API_KEY
+        read -rp "LLM 端点 (留空用 sensenova 默认): " LLM_BASE_URL
+        read -rp "LLM 模型 (留空用 sensenova 默认): " LLM_MODEL
     fi
 }
 

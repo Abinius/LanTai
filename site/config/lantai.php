@@ -27,4 +27,7 @@ return [
 
     /* 报告详情页台账预览条数；完整台账留在内核产物，不在页面全量渲染 */
     'ledger_preview' => (int) env('LANTAI_LEDGER_PREVIEW', 60),
+
+    /* 社交媒体分享预览图（相对 public/ 的路径或完整 URL） */
+    'og_image'   => env('LANTAI_OG_IMAGE', 'android-chrome-512x512.png'),
 ];

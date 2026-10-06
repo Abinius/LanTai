@@ -14,3 +14,7 @@ DB_ROOT_PASS="your_root_password"  # 如果已设置 MySQL root 密码
 # 同时写入 /var/www/llm key.txt（pipeline/config.py 读取路径）
 # 和 pipeline cron 的 LANTAI_LLM_KEY 环境变量（双保险）
 LLM_API_KEY="sk-..."
+
+# LLM 端点与模型（留空用 sensenova 默认，写入 pipeline cron env）
+LLM_BASE_URL="https://token.sensenova.cn/v1/chat/completions"
+LLM_MODEL="sensenova-6.8-flash-lite"

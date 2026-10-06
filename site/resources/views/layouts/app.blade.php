@@ -18,12 +18,12 @@
   <meta property="og:title" content="@yield('og-title', config('lantai.brand') . ' · ' . config('lantai.slogan'))">
   <meta property="og:description" content="@yield('og-description', config('lantai.slogan') . '——以国字号舆论场与官方宏观数据为信源，产出少而准的政策判断。')">
   <meta property="og:url" content="@yield('og-url', url('/'))">
-  <meta property="og:image" content="@yield('og-image', asset('android-chrome-512x512.png'))">
+  <meta property="og:image" content="@yield('og-image', asset(config('lantai.og_image')))">
   <meta property="og:locale" content="zh_CN">
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="@yield('og-title', config('lantai.brand') . ' · ' . config('lantai.slogan'))">
   <meta name="twitter:description" content="@yield('og-description', config('lantai.slogan') . '——以国字号舆论场与官方宏观数据为信源，产出少而准的政策判断。')">
-  <meta name="twitter:image" content="@yield('og-image', asset('android-chrome-512x512.png'))">
+  <meta name="twitter:image" content="@yield('og-image', asset(config('lantai.og_image')))">
 
   <link rel="stylesheet" href="{{ asset('css/app.css') }}">
   @stack('styles')

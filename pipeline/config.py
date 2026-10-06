@@ -15,8 +15,8 @@ TEMPLATES_DIR = PIPELINE_ROOT / "templates"
 
 # LLM 凭证文件(上级目录,已 gitignore)。优先环境变量覆盖。
 LLM_KEY_FILE = REPO_ROOT.parent / "llm key.txt"
-LLM_BASE_URL = "https://token.sensenova.cn/v1/chat/completions"
-LLM_MODEL = "sensenova-6.8-flash-lite"
+LLM_BASE_URL = os.environ.get("LANTAI_LLM_BASE_URL", "https://token.sensenova.cn/v1/chat/completions")
+LLM_MODEL = os.environ.get("LANTAI_LLM_MODEL", "sensenova-6.8-flash-lite")
 
 
 def load_llm_key() -> Optional[str]:
