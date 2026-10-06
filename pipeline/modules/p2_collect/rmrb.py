@@ -18,6 +18,19 @@ LAYOUT_TPL = PAPER_BASE + "layout/{ym}/{dd}/node_{page:02d}.html"
 CONTENT_RE = re.compile(r"content_\d+")
 MAX_PAGES = 16  # 版面上限,遇到连续 404 即停
 
+# void 元素无结束标签,不能计入容器嵌套深度,否则会永不退出正文容器
+VOID_TAGS = {
+    "area", "base", "br", "col", "embed", "hr", "img", "input",
+    "link", "meta", "param", "source", "track", "wbr",
+}
+
+# 版面列表里混排的版权/责编条目(也链向 content 页,但不是文章)
+CREDIT_PATTERNS = ("本版责编", "版式设计", "本版美术", "版权所有", "版权声明")
+
+
+def is_credit_title(title: str) -> bool:
+    return any(p in title for p in CREDIT_PATTERNS)
+
 
 class _LayoutParser(HTMLParser):
     """提取版面页里的文章链接与标题。"""
@@ -60,6 +73,8 @@ class _ArticleParser(HTMLParser):
         self._chunks: list[str] = []
 
     def handle_starttag(self, tag, attrs):
+        if tag in VOID_TAGS:
+            return
         if self._depth > 0:
             self._depth += 1
             return
@@ -68,6 +83,8 @@ class _ArticleParser(HTMLParser):
             self._depth = 1
 
     def handle_endtag(self, tag):
+        if tag in VOID_TAGS:
+            return
         if self._depth > 0:
             self._depth -= 1
 
@@ -119,6 +136,9 @@ class RmrbCollector(BaseCollector):
             logs.append(f"[rmrb/{date_str}] page={page} 匹配 {len(parser.links)} 篇")
 
             for href, title in parser.links:
+                if is_credit_title(title):
+                    logs.append(f"[rmrb/{date_str}] page={page} 跳过版权/责编条目: {title[:20]}")
+                    continue
                 content_url = urljoin(layout_url, href)
                 item = self._fetch_article(content_url, title, date_str)
                 if item:
