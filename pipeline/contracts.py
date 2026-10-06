@@ -61,5 +61,40 @@ class Ledger:
         )
 
 
+@dataclass
+class Prediction:
+    """P4 研判产物:一条带数据支撑的趋势预测。"""
+
+    text: str
+    data_refs: list[str] = field(default_factory=list)  # 引用的 source_url,可溯源
+
+
+@dataclass
+class Analysis:
+    """P4 三维交叉研判产物。"""
+
+    period: str
+    core_judgments: list[str] = field(default_factory=list)  # 核心矛盾判断
+    structural_findings: list[str] = field(default_factory=list)  # 结构性发现
+    predictions: list[Prediction] = field(default_factory=list)  # ≥5 条带数据支撑
+    generated_at: str = ""
+
+    def to_json(self) -> str:
+        import json
+
+        self.generated_at = datetime.now(timezone.utc).isoformat()
+        return json.dumps(
+            {
+                "period": self.period,
+                "generated_at": self.generated_at,
+                "core_judgments": self.core_judgments,
+                "structural_findings": self.structural_findings,
+                "predictions": [asdict(p) for p in self.predictions],
+            },
+            ensure_ascii=False,
+            indent=2,
+        )
+
+
 def raw_item_to_dict(item: RawItem) -> dict:
     return asdict(item)

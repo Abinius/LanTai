@@ -29,8 +29,8 @@ if hasattr(sys.stdout, "reconfigure"):
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from pipeline.config import DATA_DIR, SOURCES, get_collector
-from pipeline.contracts import RawItem
-from pipeline.modules import p1_interval, p3_extract
+from pipeline.contracts import Ledger, RawItem
+from pipeline.modules import p1_interval, p3_extract, p4_analyze
 
 
 def main() -> int:
@@ -39,6 +39,7 @@ def main() -> int:
     parser.add_argument("--to", dest="to", help="区间终点 YYYY-MM-DD")
     parser.add_argument("--days", type=int, help="最近 N 天(与 --from/--to 互斥)")
     parser.add_argument("--reextract", action="store_true", help="跳过 P2,从已有 raw 重跑 P3")
+    parser.add_argument("--reanalyze", action="store_true", help="跳过 P2/P3,从已有 ledger+raw 重跑 P4")
     args = parser.parse_args()
 
     try:
@@ -60,7 +61,8 @@ def main() -> int:
     log(f"=== 兰台观局 v3.0 开跑 period={period} days={len(days)} ===")
 
     p2_fail = False
-    if not args.reextract:
+    run_p3 = not args.reanalyze
+    if not args.reextract and not args.reanalyze:
         for date_str in days:
             for source in SOURCES:
                 collector = get_collector(source)
@@ -75,23 +77,47 @@ def main() -> int:
                 _write_raw(out_dir, source, date_str, items)
                 log(f"[p2/{source}/{date_str}] 落盘 {len(items)} 条")
     else:
-        log("--reextract:跳过 P2,使用已有 raw")
+        skipped = "P2/P3" if args.reanalyze else "P2"
+        log(f"--{'reanalyze' if args.reanalyze else 'reextract'}:跳过 {skipped},使用已有数据")
 
     # P3:从 raw 落盘读回,独立可重跑
     raw_items = _load_all_raw(out_dir)
-    log(f"[p3] 读回 {len(raw_items)} 条 raw,开始抽取")
+    if run_p3:
+        log(f"[p3] 读回 {len(raw_items)} 条 raw,开始抽取")
+        try:
+            ledger = p3_extract.extract(raw_items, period)
+        except Exception as e:
+            log(f"[p3] 异常: {e}\n{traceback.format_exc()}")
+            return 1
+
+        ledger_path = out_dir / "ledger.json"
+        ledger_path.write_text(ledger.to_json(), encoding="utf-8")
+        log(f"[p3] 台账写入 {ledger_path} points={len(ledger.points)}")
+    else:
+        ledger = _load_ledger(out_dir)
+        if ledger is None:
+            log("[p4] 无 ledger.json,无法研判")
+            return 2
+        log(f"[p4] 读回 ledger {len(ledger.points)} 点,跳过 P3")
+
+    # P4:三维交叉研判
+    log(f"[p4] 读回 {len(raw_items)} 条 raw,开始研判")
     try:
-        ledger = p3_extract.extract(raw_items, period)
+        analysis = p4_analyze.analyze(ledger, raw_items, period)
     except Exception as e:
-        log(f"[p3] 异常: {e}\n{traceback.format_exc()}")
-        return 1 if p2_fail else 1
+        log(f"[p4] 异常: {e}\n{traceback.format_exc()}")
+        analysis = p4_analyze.Analysis(period=period)
 
-    ledger_path = out_dir / "ledger.json"
-    ledger_path.write_text(ledger.to_json(), encoding="utf-8")
-    log(f"[p3] 台账写入 {ledger_path} points={len(ledger.points)}")
+    analysis_path = out_dir / "analysis.json"
+    analysis_path.write_text(analysis.to_json(), encoding="utf-8")
+    log(
+        f"[p4] 研判写入 {analysis_path} "
+        f"judgments={len(analysis.core_judgments)} "
+        f"findings={len(analysis.structural_findings)} "
+        f"predictions={len(analysis.predictions)}"
+    )
 
-    # M2 接入点:在此串联 p4_analyze(ledger, raw_items) → analysis.json
-    # M3 接入点:再接 p5_publish(analysis) → report.md
+    # M3 接入点:在此串联 p5_publish(analysis, ledger) → report.md
 
     rc = 0 if not p2_fail else 1
     log(f"=== 完成 退出码={rc} ===")
@@ -107,6 +133,36 @@ def _write_raw(out_dir: Path, source: str, date_str: str, items: list[RawItem]) 
             json.dumps(asdict(item), ensure_ascii=False, indent=2),
             encoding="utf-8",
         )
+
+
+def _load_ledger(out_dir: Path) -> Ledger | None:
+    fp = out_dir / "ledger.json"
+    if not fp.exists():
+        return None
+    try:
+        d = json.loads(fp.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return None
+    from pipeline.contracts import DataPoint
+
+    points = [
+        DataPoint(
+            indicator=p.get("indicator", ""),
+            value=p.get("value", ""),
+            source_url=p.get("source_url", ""),
+            raw_text=p.get("raw_text", ""),
+            agency=p.get("agency", "") or "",
+            unit=p.get("unit"),
+            scope=p.get("scope"),
+            yoy=p.get("yoy"),
+            mom=p.get("mom"),
+            pub_date=p.get("pub_date"),
+            llm_unverified=p.get("llm_unverified", False),
+        )
+        for p in d.get("points", [])
+        if isinstance(p, dict)
+    ]
+    return Ledger(period=d.get("period", ""), points=points)
 
 
 def _load_all_raw(out_dir: Path) -> list[RawItem]:
