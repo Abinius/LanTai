@@ -39,14 +39,94 @@ python pipeline/run.py --days 30 --republish                # 只重跑出刊（
 
 ## 部署
 
+### 前置要求
+
+- VPS：2 核 4G 起（日报约 4 分钟，周报约 10 分钟，月报约 18 分钟）
+- 系统：Ubuntu 20.04+/22.04/24.04、CentOS Stream 8/9、RHEL 8/9
+- 端口：80/443 开放，SSH 22 已配置
+- 带宽：国内 VPS 需能访问 CNTV API（新闻联播源）和 people.com.cn
+
+### 1. 配置
+
 ```bash
 git clone https://github.com/Abinius/LanTai.git
 cd LanTai
-cp config.sh.example config.sh   # 编辑域名、数据库、LLM 密钥
+cp config.sh.example config.sh
+vim config.sh
+```
+
+`config.sh` 需要填写：
+
+| 变量 | 必填 | 说明 |
+|---|---|---|
+| `DOMAIN` | 是 | 域名或 IP，如 `example.com` 或 `1.2.3.4` |
+| `DB_PASS` | 是 | 数据库密码（别用默认值） |
+| `DB_ROOT_PASS` | 视情况 | MySQL root 密码；Ubuntu 默认 auth_socket 可留空 |
+| `LLM_API_KEY` | 是 | sensenova API 密钥（`sk-` 开头） |
+| `LLM_BASE_URL` | 否 | LLM 端点，留空用 sensenova 默认 |
+| `LLM_MODEL` | 否 | LLM 模型名，留空用 sensenova-6.8-flash-lite |
+
+### 2. 执行部署
+
+```bash
 sudo ./deploy.sh config.sh
 ```
 
-支持 Ubuntu 20.04+/22.04/24.04、CentOS Stream 8/9、RHEL 8/9。脚本自动装依赖（PHP/FPM/Nginx/MySQL/Node/Python）、配数据库、建 cron（日报 + 周报）、设防火墙。
+脚本自动完成：装系统依赖 → 复制项目 → 配 .env → 建数据库 + 迁移 → 装 composer/npm 依赖 → 建前端资源 → 配 Nginx/PHP-FPM → 建 cron（日报+周报）→ 配防火墙。
+
+不带参数直接 `sudo ./deploy.sh` 会交互式问配置。
+
+### 3. 验证
+
+```bash
+# 站点是否通
+curl -I http://localhost/
+
+# 手工跑一次内核（首次出刊，约 4-10 分钟）
+cd /var/www/lantai && /usr/bin/python3 pipeline/run.py --days 7
+
+# 刷新页面看报告是否出现
+```
+
+### 4. 部署后常用命令
+
+```bash
+# 查看应用日志
+tail -f /var/www/lantai/site/storage/logs/laravel.log
+
+# 查看内核日志
+tail -f /var/log/lantai-pipeline.log
+
+# 查看定时任务
+crontab -l
+
+# 重启服务
+systemctl restart nginx php*-fpm
+
+# 更新代码（保留 .env 和数据库）
+cd /var/www/lantai
+git pull
+cd site && composer install --no-dev && npm install && npm run build:css
+```
+
+### 5. 目录结构
+
+```
+/var/www/lantai/
+├── site/              # Laravel 站点
+│   └── public/        # Nginx root
+├── pipeline/          # Python 内核
+│   └── data/          # 出刊产物
+└── .env               # Laravel 配置
+/var/www/llm key.txt   # LLM 凭证（config.py 读取路径）
+```
+
+### 6. 注意事项
+
+- **`LANTAI_DATA_DIR` 留空**：脚本生成的 .env 里此项为空，兜底路径 `../pipeline/data` 正好匹配部署布局
+- **HTTPS**：脚本只配 HTTP，需自行装 certbot：`apt install certbot python3-certbot-nginx && certbot --nginx`
+- **MySQL root 密码**：Ubuntu 默认 auth_socket（`mysql -uroot` 即可），CentOS MariaDB 默认 unix_socket（同理），如已设密码则填 `DB_ROOT_PASS`
+- **Node.js**：脚本用 nodesource 22.x LTS 安装；如已有 Node 18+ 可跳过
 
 ## 起站（本地开发）
 
