@@ -160,5 +160,121 @@ class TestReportTags(unittest.TestCase):
         self.assertEqual(_tags([]), ([], []))
 
 
+class TestRegionNormalize(unittest.TestCase):
+    """地区归一:p3 剥离行政后缀,站端订阅地区标签依赖归一后的裸名。"""
+
+    def _n(self, s):
+        from pipeline.modules.p3_extract import _normalize_region
+        return _normalize_region(s)
+
+    def test_plain_suffixes_stripped(self):
+        self.assertEqual(self._n("海南省"), "海南")
+        self.assertEqual(self._n("安徽省"), "安徽")
+        self.assertEqual(self._n("广东省"), "广东")
+
+    def test_autonomous_regions_use_bare_name(self):
+        # 民族自治区全称要归一到常用裸名,否则「广西壮族」这种既不是候选标签,
+        # 又与同一份台账里 LLM 直接吐的「广西」分裂成两个地区标签
+        self.assertEqual(self._n("广西壮族自治区"), "广西")
+        self.assertEqual(self._n("宁夏回族自治区"), "宁夏")
+        self.assertEqual(self._n("新疆维吾尔自治区"), "新疆")
+        self.assertEqual(self._n("西藏自治区"), "西藏")
+        self.assertEqual(self._n("内蒙古自治区"), "内蒙古")
+
+    def test_closed_categories_untouched(self):
+        for c in ("全国", "县域", "地区"):
+            self.assertEqual(self._n(c), c)
+
+    def test_none_and_empty_pass_through(self):
+        self.assertIsNone(self._n(None))
+        self.assertEqual(self._n(""), "")
+
+    def test_non_region_text_untouched(self):
+        # 以省/市 结尾但不是行政区的词不应被误剥
+        self.assertEqual(self._n("京津冀地区"), "京津冀地区")
+        self.assertEqual(self._n("省"), "省")
+
+
+class TestPredictionRefs(unittest.TestCase):
+    """P4 解析 LLM 返回的 predictions:data_refs 必须是 URL 列表。
+
+    LLM 偶尔会把单条引用写成字符串而非数组;直接 for 遍历字符串会逐字符
+    拆成几十个「URL」,渲染到站上就是一堆单字符链接,且不报错。
+    """
+
+    def _parse(self, preds):
+        from pipeline.modules.p4_analyze import _parse
+        return _parse({"predictions": preds}, "p")
+
+    def test_string_data_refs_becomes_single_ref(self):
+        a = self._parse([{"text": "t", "data_refs": "http://u1"}])
+        self.assertEqual(a.predictions[0].data_refs, ["http://u1"])
+
+    def test_empty_and_missing_refs(self):
+        a = self._parse([
+            {"text": "t0"},
+            {"text": "t1", "data_refs": None},
+            {"text": "t2", "data_refs": []},
+        ])
+        for pred in a.predictions:
+            self.assertEqual(pred.data_refs, [])
+
+    def test_non_string_entries_dropped(self):
+        a = self._parse([{"text": "t", "data_refs": [1, "http://u", None, {"x": 1}]}])
+        self.assertEqual(a.predictions[0].data_refs, ["http://u"])
+
+    def test_predictions_without_text_skipped(self):
+        a = self._parse([{"data_refs": ["u"]}, {"text": ""}, "not-a-dict", {"text": "ok"}])
+        self.assertEqual([p.text for p in a.predictions], ["ok"])
+
+    def test_non_dict_payload_is_empty(self):
+        from pipeline.modules.p4_analyze import _parse
+        for bad in (None, [], "x", 3):
+            self.assertEqual(_parse(bad, "p").core_judgments, [])
+
+
+class TestPipelineLoaders(unittest.TestCase):
+    """--reanalyze / --republish 走「读回已有产物」路径,读回器必须容忍脏产物
+    且不能丢字段(region 丢过一回,地区标签会静默失效)。"""
+
+    def _load(self, name, payload, loader):
+        import json
+        import tempfile
+        from pathlib import Path
+
+        from pipeline import run
+        with tempfile.TemporaryDirectory() as d:
+            Path(d, name).write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+            return getattr(run, loader)(Path(d))
+
+    def test_load_analysis_tolerates_bad_refs(self):
+        a = self._load("analysis.json", {
+            "period": "p",
+            "core_judgments": ["j"],
+            "predictions": [{"text": "t", "data_refs": None},
+                            {"text": "u", "data_refs": "http://u"}],
+        }, "_load_analysis")
+
+        self.assertEqual(a.core_judgments, ["j"])
+        self.assertEqual([p.data_refs for p in a.predictions], [[], ["http://u"]])
+
+    def test_load_ledger_keeps_region(self):
+        led = self._load("ledger.json", {
+            "period": "p",
+            "points": [{"indicator": "i", "value": "v", "source_url": "u",
+                        "raw_text": "r", "region": "山东"}],
+        }, "_load_ledger")
+
+        self.assertEqual(led.points[0].region, "山东")
+
+    def test_load_analysis_missing_file(self):
+        import tempfile
+        from pathlib import Path
+
+        from pipeline import run
+        with tempfile.TemporaryDirectory() as d:
+            self.assertIsNone(run._load_analysis(Path(d)))
+
+
 if __name__ == "__main__":
     unittest.main()

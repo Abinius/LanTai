@@ -29,6 +29,8 @@
         array_map(fn (string $t) => [$t, in_array($t, $matched_domains ?? [], true)], $domains ?? []),
         array_map(fn (string $t) => [$t, in_array($t, $matched_regions ?? [], true)], $regions ?? [])
     );
+    // 命中的标签排到最前：折叠只留 6 个，命中的被折叠掉就说不清这期为何入选
+    usort($tags, fn (array $a, array $b) => $b[1] <=> $a[1]);
 @endphp
 
 <a href="{{ route('publications.show', $period) }}"

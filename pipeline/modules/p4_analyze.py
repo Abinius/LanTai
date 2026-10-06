@@ -76,6 +76,19 @@ def _build_context(ledger: Ledger, raw_items: list[RawItem]) -> str:
     )
 
 
+def normalize_refs(refs: Any) -> list[str]:
+    """data_refs 归一成 URL 列表。
+
+    LLM 偶尔把单条引用写成字符串而非数组——直接遍历会逐字符拆成一堆
+    「URL」;写成 null 则直接 TypeError。两种都静默毁掉整份研判。
+    """
+    if isinstance(refs, str):
+        return [refs]
+    if not isinstance(refs, list):
+        return []
+    return [str(r) for r in refs if isinstance(r, str)]
+
+
 def _parse(data: Any, period: str) -> Analysis:
     analysis = Analysis(period=period)
     if not isinstance(data, dict):
@@ -91,11 +104,10 @@ def _parse(data: Any, period: str) -> Analysis:
         for p in preds:
             if not isinstance(p, dict) or not p.get("text"):
                 continue
-            refs = p.get("data_refs", [])
             analysis.predictions.append(
                 Prediction(
                     text=str(p["text"]),
-                    data_refs=[str(r) for r in refs if isinstance(r, str)],
+                    data_refs=normalize_refs(p.get("data_refs")),
                 )
             )
     return analysis

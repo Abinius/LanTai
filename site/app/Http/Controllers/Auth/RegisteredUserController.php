@@ -30,7 +30,7 @@ class RegisteredUserController extends Controller
     public function store(Request $request): RedirectResponse
     {
         // 邮箱统一转为小写存储
-        $request->merge(['email' => Str::lower($request->email)]);
+        $request->merge(['email' => User::normalizeEmail($request->email)]);
 
         $request->validate([
             'email' => 'required|string|email|max:255|unique:'.User::class,

@@ -82,8 +82,7 @@ class SubscriptionTest extends TestCase
     }
 
     public function test_registered_user_can_login_again(): void
-    {
-        $this->user(['投资']);
+    {        $this->user(['投资']);
 
         $response = $this->post(route('login'), [
             'email' => 'reader@example.com',
@@ -93,6 +92,43 @@ class SubscriptionTest extends TestCase
         $response->assertRedirect(route('publications.index'));
         $this->assertAuthenticated();
         $this->assertSame('reader@example.com', Auth::user()->email);
+    }
+
+    public function test_login_accepts_differently_cased_email(): void
+    {
+        $this->post(route('register'), [
+            'email' => 'Reader@Example.com',
+            'password' => 'secret-1',
+            'password_confirmation' => 'secret-1',
+        ]);
+        $this->assertDatabaseHas('users', ['email' => 'reader@example.com']);
+        $this->post(route('logout'));
+
+        $this->post(route('login'), [
+            'email' => 'Reader@Example.com',
+            'password' => 'secret-1',
+        ])->assertRedirect(route('publications.index'));
+
+        $this->assertAuthenticated();
+    }
+
+    /**
+     * 注册把邮箱归一成小写存储，找回密码也必须同样归一，
+     * 否则大小写不一致时 SQLite（BINARY 比较，区分大小写）查不到用户。
+     */
+    public function test_password_reset_accepts_differently_cased_email(): void
+    {
+        $this->post(route('register'), [
+            'email' => 'Reader@Example.com',
+            'password' => 'secret-1',
+            'password_confirmation' => 'secret-1',
+        ]);
+        $this->post(route('logout'));
+
+        $this->post(route('password.email'), ['email' => 'Reader@Example.com'])
+            ->assertSessionHasNoErrors();
+
+        $this->assertDatabaseHas('password_reset_tokens', ['email' => 'reader@example.com']);
     }
 
     private function user(array $domains = [], array $regions = []): User

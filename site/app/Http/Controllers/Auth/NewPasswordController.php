@@ -34,6 +34,8 @@ class NewPasswordController extends Controller
             'email' => 'required|email',
             'password' => ['required', 'confirmed', PasswordRule::min(6)],
         ]);
+        // 与注册/登录同一套归一，否则重置链接里的邮箱大小写不同就匹配不上
+        $request->merge(['email' => User::normalizeEmail($request->email)]);
 
         $status = Password::reset(
             $request->only('email', 'password', 'password_confirmation', 'token'),

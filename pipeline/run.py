@@ -213,7 +213,7 @@ def _load_analysis(out_dir: Path) -> Analysis | None:
         predictions=[
             Prediction(
                 text=p["text"],
-                data_refs=[r for r in p.get("data_refs", []) if isinstance(r, str)],
+                data_refs=p4_analyze.normalize_refs(p.get("data_refs")),
             )
             for p in d.get("predictions", [])
             if isinstance(p, dict) and isinstance(p.get("text"), str) and p["text"]

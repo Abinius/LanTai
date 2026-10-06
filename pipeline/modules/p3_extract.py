@@ -146,12 +146,21 @@ REGION_CATEGORIES = ("全国", "县域", "地区")
 # 行政区划后缀,长者优先。归一到裸省名(与台账中占多数的写法一致),
 # 否则同一数据在不同文章里会散成 海南/海南省、安徽/安徽省 两类标签。
 REGION_SUFFIXES = ("特别行政区", "自治区", "自治州", "省", "市")
+# 带民族名的自治区:直接按后缀剥会得到"广西壮族""新疆维吾尔"这类
+# 既不在候选表、又与裸名写法分裂的标签,故显式映射。
+REGION_ALIASES = {
+    "广西壮族自治区": "广西",
+    "宁夏回族自治区": "宁夏",
+    "新疆维吾尔自治区": "新疆",
+}
 
 
 def _normalize_region(region: Optional[str]) -> Optional[str]:
     """海南省→海南、内蒙古自治区→内蒙古;封闭类别与"浦东新区"等不受影响。"""
     if not region or region in REGION_CATEGORIES:
         return region
+    if region in REGION_ALIASES:
+        return REGION_ALIASES[region]
     for suf in REGION_SUFFIXES:
         if region.endswith(suf) and len(region) > len(suf):
             return region[: -len(suf)]

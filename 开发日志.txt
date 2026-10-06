@@ -529,8 +529,7 @@ M5 · Signify 订阅板块（兴趣标签 + 摘要推送）
     DB_DATABASE 默认 signify → lantai、REDIS_PREFIX signify_ → lantai_、
     package.json name signify → lantai-guanju（lock 同步）。
   · .env.example 补 LANTAI_LEDGER_PREVIEW；README 补认证/订阅章节、路由表、测试说明。
-  · site/database/data/（Signify 的 artists.json + avatars 种子数据）零引用，
-    属可删遗留；本机删除被安全策略拦下，未动，需人工确认。
+  · site/database/data/（Signify 的 artists.json + avatars 种子数据）零引用，已删（2026-10-06）。
 
 12.5 测试（此前站点无测试套件）
   · tests/TestCase.php + Feature/SubscriptionTest（7 例）+ Feature/BriefingTest（5 例）
@@ -551,6 +550,61 @@ M5 · Signify 订阅板块（兴趣标签 + 摘要推送）
     REGIONS 候选表里没有"南京"，该标签无法订阅。地市→省映射表仍缺。
   · report.md 全量台账 10.9 万字（研判占比 2%），作为文件交付物可接受。
   · 情报后台（PRD §3.7，信源管理/诊断/评测）未建。
+
+
+================================================================
+13. M5 交付后找 bug 一轮（2026-10-06）
+================================================================
+
+方法：先跑两套测试确认基线（PHP 13 例 / 内核 19 例全绿），再按「写测试暴露
+→ 确认失败 → 修 → 复跑」逐个钉死。四个真 bug，都在测试里留了回归用例。
+
+13.1 雷 V：民族自治区全称被剥成半个名字（内核 p3）
+  `_normalize_region()` 按后缀剥离时，「广西壮族自治区」→ 后缀是「自治区」，
+  剥掉得「广西壮族」；宁夏回族/新疆维吾尔同理。这个结果既不在站端
+  REGIONS 候选表里（无法订阅），又与同一份台账里 LLM 直接吐的「广西」
+  分裂成两个地区标签。同批的西藏自治区/内蒙古自治区恰好正确，所以一直没露馅。
+  对策：加 REGION_ALIASES 显式映射三个带民族名的自治区，剥离前先查表。
+  测试：TestRegionNormalize 5 例（含「京津冀地区」「省」不被误剥）。
+
+13.2 雷 W：找回密码不认大小写不同的邮箱（站点）
+  注册把邮箱归一小写存储，登录的 LoginRequest 也归一小写，唯独找回密码
+  这条链（PasswordResetLinkController + NewPasswordController）没归一。
+  SQLite 字符串比较区分大小写（MySQL 默认 utf8mb4_unicode_ci 不区分），
+  于是本地出现「注册得进、密码找不回」，报「找不到具有该电子邮件地址的用户」。
+  对策：抽 `User::normalizeEmail()` 一处实现，注册/登录/找回密码四处共用。
+  测试：test_password_reset_accepts_differently_cased_email。
+
+13.3 雷 X：报告卡折叠标签会吃掉「命中标签」（站点）
+  卡片最多显示 6 个标签，多出折叠成 +N。但命中标签排在领域+地区拼接的
+  原顺序里，30 天期有 9 领域 + 20 地区，「山东」这种排在第 10 位之后——
+  于是卡片出现在「我的情报」里，却一个高亮都看不到，用户无从判断
+  这期为什么入选（订阅金融+云南时两个命中都会被折叠掉）。
+  对策：usort 把命中标签排到最前，再截断。
+  测试：test_matched_tags_are_never_folded_away（8 领域 + 6 地区，
+  命中项排在最后的极端构造）。
+
+13.4 雷 Y：p4 的 data_refs 未校验类型，一个 null 废掉整期研判（内核）
+  这是本轮最重的一个。`_parse()` 里 `p.get("data_refs", [])` 直接遍历：
+  · LLM 把单条引用写成字符串（而非数组）→ 逐字符拆成几十个「URL」，
+    渲染到站上是一堆单字符链接，且全程不报错；
+  · 写成 null → 遍历 None 抛 TypeError。
+  后者更致命：run.py 的 try/except 会把异常吞成空 Analysis，接着触发
+  §11.3 雷 N 的护栏「台账非空而研判为空」→ 跳过 P5 返回 1。
+  也就是说 LLM 少写一个字段，整期报告就不出了。
+  实测现有两期产物未中招（LLM 恰好一直给数组），属潜在雷。
+  对策：抽 `p4_analyze.normalize_refs()`：字符串当单条引用收下，
+  null/非列表归空，非字符串元素丢弃；p4 写与 run.py 读回共用同一实现。
+  测试：TestPredictionRefs 5 例 + TestPipelineLoaders 3 例（含 --republish
+  读回路径的脏产物容忍与 region 不丢字段的回归）。
+
+13.5 复跑结果
+  · PHP：16 例 52 断言全绿（本轮新增 3 例）
+  · 内核：32 例全绿（本轮新增 13 例）
+  · `--republish` 端到端复验：58 点、judgments=3/findings=5/predictions=7、
+    退出码 0，读回路径无异样
+  · 顺带确认解析层现状：p3（isinstance list/dict + _clean）、
+    p5（str(x or "")）都有类型防护，只有 p4 漏了，已补。
 
 
 ================================================================

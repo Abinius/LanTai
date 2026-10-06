@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\Auth;
 
+use App\Models\User;
 use Illuminate\Auth\Events\Lockout;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Support\Facades\Auth;
@@ -24,7 +25,7 @@ class LoginRequest extends FormRequest
      */
     protected function prepareForValidation(): void
     {
-        $this->merge(['email' => Str::lower($this->email)]);
+        $this->merge(['email' => User::normalizeEmail($this->email)]);
     }
 
     /**

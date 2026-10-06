@@ -111,6 +111,36 @@ class BriefingTest extends TestCase
         $this->assertSame(['投资', '消费'], $briefings[0]['domains']);
     }
 
+    /**
+     * 标签超过 6 个会折叠，但命中的标签必须排在最前面——
+     * 否则用户看到卡片却找不到"为什么这期进了我的情报"。
+     */
+    public function test_matched_tags_are_never_folded_away(): void
+    {
+        // 命中的「财政」在 8 个领域里排最后，「安徽」在 6 个地区里排最后，
+        // 折叠时若不前置就一个高亮都看不到
+        $this->publishPeriod('20261008', ['增长', '投资', '消费', '外贸', '物价', '金融', '能源', '财政'],
+            ['全国', '北京', '上海', '江苏', '浙江', '安徽'], '丁期报告');
+        $user = $this->reader(['财政'], ['安徽']);
+
+        $html = $this->actingAs($user)
+            ->get(route('briefing.index'))
+            ->assertOk()
+            ->assertSee('丁期报告')
+            ->getContent();
+
+        foreach (['财政', '安徽'] as $tag) {
+            $this->assertMatchesRegularExpression(
+                '/border-accent text-accent">\s*' . $tag . '\s*</u',
+                $html,
+                "命中标签「{$tag}」应高亮渲染，不能被 6 个上限折叠掉"
+            );
+        }
+
+        // 8 领域 + 6 地区 = 14 个，去掉前置的两个命中，仍应折叠 8 个
+        $this->assertStringContainsString('+8', $html);
+    }
+
     /** 写入一期假的内核产物（与内核产物同构） */
     private function publishPeriod(string $period, array $domains, array $regions, string $title): void
     {
