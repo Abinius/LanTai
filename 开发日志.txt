@@ -1,0 +1,402 @@
+================================================================
+  兰台观局 v3.0 · 开发日志
+  建档：2026-10-06
+  覆盖：M1 内核 MVP → M4 前端站（五阶段流水线 + Laravel 渲染层全通）
+  作者：Abin / Claude
+================================================================
+
+⚠️ 本文件入库（在 git 仓库内）。**严禁写入任何密钥/密码**——
+  · LLM 凭证在上级目录 `llm key.txt`（已 gitignore）
+  · 站点密钥在 `site/.env`（已 gitignore），APP_KEY 由 artisan key:generate 生成
+  · 旧 AIHOT 时代的开发日志（含 DB 密码、后台密码、LLM key 明文）在
+    上级目录 `开发日志.txt`，**不在仓库内**，仅作历史存档。其中的
+    方法论与踩雷（见本文第 7 节）仍然有效并已落地为 v3.0 代码。
+
+【目录】
+  1. 项目状态与目录
+  2. 环境与工具链
+  3. 信源探测结论（含人民日报路径迁移）
+  4. M1 内核 MVP：采集→台账
+  5. M2 研判：三维交叉
+  6. M3 出刊引擎：模板驱动深度报告
+  7. 承自 AIHOT 时代的踩雷（v3.0 已落地的部分）
+  8. v3.0 新增踩雷
+  9. 未做的事 / 已知缺口
+  10. 下一步 M5
+
+
+================================================================
+1. 项目状态与目录
+================================================================
+
+仓库：D:\Abin\兰台观局\兰台观局（git，main 分支）
+
+提交历史：
+  300b445  M4 前端：Laravel 站上线（Signify 风格）
+  d63c88c  M3 出刊引擎：模板驱动深度报告
+  917069a  M2 研判：三维交叉研判落地
+  4013393  M1 内核 MVP：采集→台账流水线
+  526c840  初始化仓库：纳入 v3.0 PRD 与 UI 设计规范
+
+里程碑（PRD §11）：
+  M1 内核 MVP    ✅ 2026-10-06
+  M2 研判        ✅ 2026-10-06
+  M3 出刊引擎    ✅ 2026-10-06
+  M4 前端        ✅ 2026-10-06
+  M5 集成        ⏳ 未开始（Signify 订阅板块 + auth 重建）
+
+目录：
+  pipeline/   Python 内核（五阶段：interval/collect/extract/analyze/publish）
+  site/       Laravel 11.55.1 前端站（Signify 风格，读取 pipeline/data 渲染）
+  docs/       PRD v3.0 与 UI 设计规范（规格来源）
+  data/       本地数据（gitignore）
+
+一键跑通：
+  python pipeline/run.py --from 2026-10-01 --to 2026-10-05
+  cd site && php artisan serve --host=127.0.0.1 --port=8000
+
+内核产物（pipeline/data/<period>/）：
+  raw/{xwlb,rmrb}/*.json   原始采集
+  ledger.json              数据台账（P3）
+  analysis.json            三维交叉研判（P4）
+  report.md                深度报告（文件交付物）
+  report.json              报告元数据（站端读这个）
+  run.log                  诊断日志
+
+flags：
+  --reextract   跳过 P2，从已有 raw 重跑 P3+P4+P5
+  --reanalyze   跳过 P2/P3，只重跑 P4+P5
+
+
+================================================================
+2. 环境与工具链
+================================================================
+
+Python 3.14.7（PRD 写 3.12，实际偏高，标准库 API 兼容，采集零依赖无碍）
+pip 26.2.1
+PHP 8.2.33（ZTS VC++2019）：PDO/pdo_mysql/pdo_sqlite/mysqlnd/mbstring/curl/zip/bcmath/gd/libxml/SimpleXML 全齐
+node v24.19.0 + npm 11.17.0
+Laravel 11.55.1
+
+不在 PATH 上的东西（要用全路径）：
+  composer  未安装到 PATH，phar 在 %APPDATA%\Composer\composer.phar（2.8.5）
+            → php "$APPDATA/composer/composer.phar" <cmd>
+  node      C:\Program Files\nodejs\node.exe（npm.cmd 同目录）
+            → export PATH="/c/Program Files/nodejs:$PATH"
+
+本机没有的（影响部署路径）：
+  MySQL    3306 无监听，无 CLI，无安装目录 → 本地开发走 SQLite
+  nginx    未安装 → 本地用 php artisan serve
+  docker   未安装 → 与"零 Docker"部署约束一致，无影响
+
+  生产部署按 PRD §2/§7 上 Nginx + PHP-FPM + MySQL 5.7+，SQLite 只是本机开发替身。
+
+数据目录约定：
+  .gitignore 已覆盖 vendor/ node_modules/ storage 运行时目录 data/
+  database/*.sqlite 也需排除（M4 时补的，否则空库文件会被提交）
+
+
+================================================================
+3. 信源探测结论（2026-10-06 实测）
+================================================================
+
+★ 新闻联播（json_list，直连 CNTV API）
+  URL: https://api.cntv.cn/NewVideo/getVideoListByColumn
+       ?id=TOPC1451528971114112&n=50&sort=desc&p=1&mode=0&serviceId=tvcctv
+  HTTP 200，JSON，data.total=1000，data.list 非空
+  字段：title / brief / time / url
+  实测首条：title=《新闻联播》 20261005 21:00，time=2026-10-05 21:00:00
+    （探测当天 10-06 尚未上架，最新为前晚那期，属正常）
+  一天多条（19:00 首播 + 21:00 重播），取 time 最早的一条即得首播
+  brief 字段就是当日全部提要，正文即用它，不再抓节目页
+
+★ 人民日报（★路径已迁移，旧适配器作废）
+  旧路径 rmrb/html/YYYY-MM/DD/nbs.D110000renmrb_*.htm → 404
+    AIHOT 开发日志里记的就是这个旧路径，直接照抄会全 404
+  新路径：
+    入口   http://paper.people.com.cn/rmrb/pc/layout/index.html（列今日版面）
+    版面页 rmrb/pc/layout/YYYYMM/DD/node_XX.html   （XX 从 01 起）
+    正文页 rmrb/pc/content/YYYYMM/DD/content_XXXXXXXX.html
+  正文容器：id="ozoom" 与 id="articleContent" 并存，优先 ozoom
+  实测 2026-10-05：8 个版面、37 篇、page 9-11 连续 404
+  文章链接形如 content_30184220.html，用 urljoin 解析相对路径
+
+★ 宏观核验源（已探测，M2 后接，未纳入本期）
+  探测报告：上级目录《数据采集可行性探测报告.md》
+  可用：
+    发改委政策  www.ndrc.gov.cn/xxgk/zcfb/fzggwl/      ul.u-list li（30 条/页）
+                分页 index_(N-1).html；实测 9 页满、第 10 页 404
+    文旅政策   zwgk.mct.gov.cn/zfxxgkml/zcfg/          ul.r_content_2022 li（15 条）
+    文旅统计   zwgk.mct.gov.cn/zfxxgkml/447/465/index_3081.html
+                ul.mesgopen2 li（15 条/页，带日期，15 页）
+  注意：
+    发改委/文旅的 /xxgk/zcfb/ 与 /zfxxgkml/ 是**站点自设 JS 跳转桩**
+    （200 但只有 54/150 字节），不是被墙，换到真实栏目地址即可
+  攻不下：
+    海关总署   主站 504 回源超时；统计平台 412 JS 挑战（Jiasule 动态 nsd），
+               8 个 .json 路径全 Spring 404，未发现取数接口
+    国务院政策文件库   WAF 403 + 检索走混淆网关
+  许可：
+    ndrc.gov.cn/robots.txt = 403（读不到，许可不可验证）
+    *.mct.gov.cn/robots.txt = 404（未声明禁止）
+
+
+================================================================
+4. M1 内核 MVP：采集→台账（commit 4013393）
+================================================================
+
+pipeline/ 13 文件：
+  run.py            编排器（argparse --from/--to 或 --days，串 p1→p3）
+  config.py         信源注册表 + LLM 凭证读取（llm key.txt 或 LANTAI_LLM_KEY）
+  contracts.py      RawItem / DataPoint / Ledger 等 dataclass
+  llm.py            sensenova 客户端（stdlib urllib，thinking:disabled，退避 3 次）
+  modules/p1_interval.py
+  modules/p2_collect/{base.py, xwlb.py, rmrb.py}
+  modules/p3_extract.py
+  prompts/extract.md
+
+设计要点：
+  · 模块间只传结构化 dataclass，任一步可独立替换/重跑
+  · 采集零依赖：全 stdlib（urllib.request + html.parser.HTMLParser + re）
+  · base.py 容错：记录 HTTP 状态码 + 字节数 + 选择器匹配数到 run.log；
+    连续 3 个 404 停止翻版
+  · p3 限流降级：LLM 失败时正则命中片段仍入台账，标 llm_unverified=true，
+    不阻断流水线
+
+验收（单日 2026-10-05）：
+  xwlb  1 条，published_at=2026-10-05 19:00:00（真实播出时间，非抓取时间），
+        body=496 字（brief 提要）
+  rmrb  37 篇，8 个版面，page 9-11 连续 404 自动停
+  ledger  4-10 个数据点，**人工核对原文全部命中**：
+          "3.4%" / "5.3%" / "196.3" / "348.3" / "78个步行街" 全在
+          content_30184222.html 正文中 → 无 LLM 幻觉
+
+验收（5 天 2026-10-01~05，含后续里程碑重跑）：
+  189 raw（5 xwlb + 184 rmrb），49 台账点，全部 llm_unverified=false
+  （sensenova 本期未触限流）
+
+
+================================================================
+5. M2 研判：三维交叉（commit 917069a）
+================================================================
+
+新增：
+  modules/p4_analyze.py    三维交叉研判
+  prompts/analyze.md       研判分析师角色 + 红线
+  contracts.py             加 Analysis / Prediction
+  run.py                   接入 P4，加 --reanalyze
+
+三维交叉方法（PRD §3.4）：
+  1 数据说什么——哪些强、哪些弱、矛盾在哪
+  2 官媒说什么——主线、措辞升级、政策指向
+  3 两者是否同频——印证 or 背离（背离处即机会/风险）
+
+LLM 输入压缩（控成本）：
+  数据面 = 台账点（indicator/value/yoy/agency + source_url）
+  官媒面 = 联播提要全文（已精简）+ 人民日报标题清单（不送正文）
+  输出 = core_judgments / structural_findings / predictions[{text, data_refs}]
+
+红线（prompts/analyze.md）：
+  · predictions ≥5 条，每条必须引用台账里至少一个 source_url
+  · 不可编造数据；台账里没有的数字不能出现在预测里
+  · 背离优先（这是判断的价值所在）
+  · core_judgments ≤3 条，少而准
+  · 措辞克制：用"数据显示""官媒主线指向""存在背离"，不用"必将""暴涨"
+
+验收（5 天数据）：
+  3 核心矛盾判断 + 5-6 结构性发现 + 7-10 条趋势预测，每条带可溯源 source_url
+  样例（背离心发现）：
+    "2500亿超长期特别国债已全额下达，但社零仅2.5%、公路流动-1.1%，
+     政策投放与实物消费背离延续风险"
+
+
+================================================================
+6. M3 出刊引擎：模板驱动深度报告（commit d63c88c）
+================================================================
+
+新增：
+  modules/p5_publish.py          模板渲染 + 变量注入
+  templates/report-template.md   报告骨架（{{var}} 占位）
+  prompts/publish.md             出刊主编角色
+  contracts.py                   加 Report
+  config.py                      加 TEMPLATES_DIR
+  run.py                         接入 P5，产出 report.md + report.json
+
+★ 关键设计取舍：数据表与源列表**程序化渲染**，不走 LLM
+  · 数字从 ledger 确定性生成 → 报告里没有一个数字可能被幻觉
+  · 只有"标题 + 核心摘要"走 LLM 短调用（max_tokens=800），失败时程序化兜底
+    （标题取首条判断前 25 字，摘要拼前两条结构性发现）
+  · report.md 是文件交付物；Laravel 站不解析它，改读结构化 JSON，
+    避免多一套渲染链路
+
+报告结构（PRD §6）：
+  核心摘要 / 一 核心矛盾判断 / 二 结构性发现 / 三 趋势预测（带数据支撑）
+  附 数据台账 / 附 数据溯源 / 口径说明（区分"表述"与"事实"）
+
+验收（5 天数据）：
+  10693 字报告，12 个去重数据源，每条论断可溯源
+  标题示例："服务业扩能与社零偏冷的张力和分化：2026国庆周观察"
+
+
+================================================================
+7. 承自 AIHOT 时代的踩雷（v3.0 已落地为代码）
+================================================================
+
+以下四条在旧 AIHOT 开发日志里，v3.0 重构时没有忘掉，都已写进代码：
+
+雷1 RSS/聚合源可能是死快照
+  旧事：新华社 RSS 冻结在 2022-12-14，300 篇全是老稿，无 <pubDate>，
+        AIHOT 用 discovered_at 冒充 published_at → 首页 2021 老稿像当天新闻
+  v3.0 落地：
+    · xwlb 用 CNTV API 的 time 字段作 published_at（真实播出时间）
+    · rmrb 日期从 URL 路径 YYYYMM/DD 取，不用抓取时间
+    · 任何一处都不做"用抓取时间回填发布日期"
+
+雷5 sensenova 必须 disable thinking
+  旧事：不加 thinking:disabled，max_tokens 全花在 reasoning 上，
+        finish_reason="length"，content 为空
+  v3.0 落地：pipeline/llm.py 里 "thinking": {"type":"disabled"} 硬编码进
+        请求 body，所有 LLM 调用自动生效，不需要调用方记得
+
+雷9 时效性红线（旧时代最严重的事故）
+  旧事：用 timeline_at（抓取时间）批量回填 published_at，让 9 月 8 日印发的
+        文件显示成"今天发布"，绕过了引擎"backfill 无真实日期不上精选"的保护
+  v3.0 落地：
+    · contracts.DataPoint.pub_date 解析不出就留 None（不留假值）
+    · prompts/extract.md 明文写红线：pub_date 必须真实，禁止用"今天"或
+      抓取日期冒充；解析不出填 null
+    · 站端口径说明区也写死："未核验点为模型抽取失败时的正则命中片段，
+      已单独标记，请谨慎引用"
+
+雷4 "curl 抓到" ≠ "程序抓到"
+  旧事：阿里云 WAF 对 UA 差异化处理，curl 到 72KB HTML 而引擎报 no items matched
+  v3.0 落地：base.py 每次请求都记录 HTTP 状态码 + 字节数 + 选择器匹配数到
+        run.log，便于诊断"到底有没有抓到"
+
+
+================================================================
+8. v3.0 新增踩雷
+================================================================
+
+🚨 雷 A：人民日报路径迁移（会导致整源全 404）
+  旧路径 rmrb/html/YYYY-MM/DD/nbs.D110000renmrb_*.htm 已 404。
+  照抄历史文档/旧代码会整个源静默失效。
+  新路径见第 3 节。
+  教训：信源站点结构会变，路径要定期探测；探测结果要写进日志而不是只靠记。
+
+🚨 雷 B：argparse 的 dest 与 flag 名不一致
+  --from/--to 里 from 是 Python 关键字，dest 必须显式给 "from_"，
+  但 --to 没指定 dest 时属性名就是 "to" 而不是 "to_"。
+  两种命名混用时极易写错，直接 AttributeError。
+
+🚨 雷 C：python 脚本导入路径
+  `python pipeline/run.py` 时 sys.path[0] 是 pipeline/ 而**不是** repo root，
+  `import pipeline.xxx` 会失败。run.py 里手动 insert repo root 到 sys.path；
+  config.py 的信源注册表路径要写全 `pipeline.modules.p2_collect.xwlb.XwlbCollector`。
+
+🚨 雷 D：Windows 控制台 cp936 乱码
+  run.py 输出中文全乱码，但落盘文件都是正常 UTF-8。
+  修：run.py 开头 sys.stdout.reconfigure(encoding="utf-8")。
+  注意：`python -c "..."` 交互调试不走这段代码，仍然乱码（无害，但要看懂）。
+  读 UTF-8 文件时记得同样 reconfigure，否则 print 出来是乱码、以为数据坏了。
+
+🚨 雷 E：optimize-autoloader:true 固化 classmap（M4 最坑的一个）
+  Signify 的 composer.json 配了 optimize-autoloader:true。
+  删掉 app/Providers/AuthServiceProvider.php 后 artisan 全线报
+    "Class App\Providers\AuthServiceProvider not found"
+  原因是它被显式登记在**两个地方**：
+    · bootstrap/providers.php
+    · config/app.php 的 'providers' 数组
+  两个都改了 + php composer.phar dump-autoload + 清 bootstrap/cache/
+  才恢复。
+  教训：删/加 app/Providers/*.php 后必须重生成 autoload。
+
+🚨 雷 F：Tailwind 颜色令牌是嵌套对象
+  tailwind.config.js 里是 status: { warning: '#A8791E' }
+  所以类名是 bg-status-warning/5，**不是** bg-warning/5。
+  写错时不报错，只是样式不生效，很难发现。
+
+🚨 雷 G：改了 Blade 视图必须重建 CSS
+  Tailwind 构建时按源码扫描生成工具类，新加视图里的类不在已编译产物里。
+  本机无 node_modules（Signify 只提交了编译产物），需先 npm install
+  再 npm run build:css。改视图后忘建 = 页面样式静默丢失。
+
+🚨 雷 H：Git Bash 的 locale 是空的，中文传 curl 会被破坏
+  locale= 时 `curl "http://x/?q=服务业"` 传出的字节不是标准 UTF-8，
+  后端检索误报 0 命中（看起来像检索功能坏了）。
+  用显式百分号编码（?q=%E6%9C%8D%E5%8A%A1%E4%B8%9A）或 PHP 侧 rawurlencode
+  复现正确行为。踩过一次，排查了很久才发现是 shell 编码问题。
+
+🚨 雷 I：php artisan serve 用 pkill 杀不掉
+  Windows 下 pkill -f "artisan serve" 无效，端口仍 LISTENING。
+  正确做法：netstat -ano 找端口 PID，taskkill //PID <pid> //F
+  （注意 taskkill 在 Git Bash 里要写 //PID //F 双斜杠）
+
+🚨 雷 J：LLM 输出有随机性，别把预测条数当稳定性指标
+  同一批 49 个台账点重跑 P4，predictions 从 7 条变 10 条，findings 从 6 变 5。
+  内容质量稳定但条数浮动。验收看"是否 ≥5 且每条带 source_url"，不看固定条数。
+
+🚨 雷 K：dataclass 加必填字段会连带打挂兜底构造
+  Report 加必填 summary 后，run.py 里出刊失败的兜底
+  Report(period=..., title=..., content_md="") 直接 TypeError。
+  改契约时全仓搜构造点，别只改主路径。
+
+🚨 雷 L：composer 的 post-autoload-dump 会跑 artisan package:discover
+  如果 app 起不来（比如雷 E 未修），dump-autoload 也失败，
+  看起来像"composer 有问题"，其实是应用启动失败。
+  报错要往上看第一行异常，不是看 composer 的退出码。
+
+
+================================================================
+9. 未做的事 / 已知缺口
+================================================================
+
+功能缺口：
+  · 宏观核验源未接（发改委/文旅已探明可用，海关/国务院攻不下）
+  · 国务院政策文件库单独攻坚未排期
+  · 信源系统 v5.0 的 998 域名白名单闸门未接
+  · 主题页（政策主题/地区/指标检索）未做，PRD §3.6
+  · 每日/每周/专题出刊未做，目前只有单期模式
+  · Agent 接入（API/MCP/RSS/llms.txt）未做，PRD §3.8
+
+前端缺口：
+  · 浏览器图标 / og 分享图仍是 Signify 的 PNG 位图，文本无法重生成，
+    换品牌图标需单独设计
+  · 报告详情页未做 Markdown 渲染，改读结构化 JSON；report.md 只作文件交付物
+  · 未做后台管理（情报后台，PRD §5.3 映射 admin/*）
+
+数据质量：
+  · 台账里 agency 字段 LLM 不总填（部分点为空字符串），
+    因为提示词要求"不在白名单写 null"，模型偶尔写成空串。
+    建议 prompts/extract.md 补一条：机构名不确定时留空字符串即可，
+    或后续在 extract 阶段统一 normalize
+  · predictions 的 data_refs 偶有 LLM 拼错 URL（例如 content_ 写成 content/），
+    软错误，不影响其他点，人工核对时留意
+  · 单期模式无跨期去重：同一指标连续多期出现会重复进台账
+
+
+================================================================
+10. 下一步 M5
+================================================================
+
+M5 · Signify 订阅板块（兴趣标签 + 摘要推送）
+
+需要先做：
+  1. 重建 auth —— M4 为精简把 auth 全套（auth/admin/profile/setup 控制器、
+     auth.php/setup.php 路由、User 模型、users 表 migration、Policies、
+     Requests）全删了。Signify 源码在 D:\Abin\Signify\Signify\ 里全套可参考。
+  2. 加 subscriptions 表（PRD §9：user_id / tags / channel / freq）
+  3. 兴趣标签 = 领域 × 地区
+  4. 情报按标签匹配 → 摘要卡片 → 推送到"我的情报"
+  5. 部署到大陆 VPS（推荐腾讯/阿里 2 核 4G），Nginx + PHP-FPM + MySQL 5.7+
+     + cron 定时跑内核 + systemd 守护
+
+建议排期（未做决定）：
+  (a) 先接发改委 + 文旅两个已探明可用的宏观核验源，补齐 P2
+  (b) 再做 M5 订阅端
+  (c) 国务院政策文件库单独排期攻坚
+
+
+================================================================
+END OF LOG
+================================================================
