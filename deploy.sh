@@ -339,11 +339,13 @@ setup_cron() {
 * * * * * cd $WEB_ROOT/site && php artisan schedule:run >> /dev/null 2>&1
 0 8 * * * $llm_env cd $WEB_ROOT && $PYTHON_BIN pipeline/run.py --days 1 >> /var/log/lantai-pipeline.log 2>&1
 0 8 * * 1 $llm_env cd $WEB_ROOT && $PYTHON_BIN pipeline/run.py --days 7 >> /var/log/lantai-pipeline.log 2>&1
+0 9 * * * cd $WEB_ROOT/site && php artisan lantai:push >> /var/log/lantai-push.log 2>&1
 # END lantai
 EOF
 
     crontab "$cron_tmp" && rm -f "$cron_tmp"
     touch /var/log/lantai-pipeline.log
+    touch /var/log/lantai-push.log
     log "定时任务已配置（幂等，重跑不重复）"
 }
 

@@ -708,5 +708,104 @@ W1（P0-1 双轨出刊 + P0-2 核验查询，7ac3186）后，实测 30 天台账
 
 
 ================================================================
+15. v3.1 W3：推送通道（邮件订阅闭环）（2026-10-07）
+================================================================
+
+W2 后订阅端仍是拉取式（用户主动刷新 /briefing），PRD §3.9 承诺的「推送到
+我的情报」没闭环。本轮 W3 加邮件推送通道，存量订阅 channel 默认 'none'
+不推——用户主动改订阅设置才进推送，避免存量用户被突然打扰。
+
+15.1 subscriptions 表加推送列
+
+  新 migration `2026_10_08_000001_add_push_settings_to_subscriptions_table`：
+    · channel varchar(20) default 'none'  —— 'none' | 'email'
+    · freq varchar(20) default 'weekly'   —— 'daily' | 'weekly'
+    · last_pushed_at timestamp nullable    —— 上次推送时间戳，幂等判断用
+  存量行 channel 全部默认 'none'，即不推。Subscription model 加 fillable
+  与 cast（last_pushed_at → datetime）。
+
+15.2 SubscriptionService 加推送方法
+
+  · CHANNELS / FREQS 常量白名单，`normalizeScalar()` 单值白名单校验
+    （不在候选内回落默认值，防脏输入）
+  · save() 签名扩到 (user, domains, regions, channel='none', freq='weekly')
+  · pushSettingsFor() 返当前推送设置（无订阅记录返回全默认）
+  · shouldPushNow(user, now)：channel='email' 且距 last_pushed_at 已达
+    freq 阈值（daily 24h / weekly 7d）；从未推送视为「该推」
+  · pushableUsers(now)：过滤出该推送的用户 Collection
+  · markPushed(user)：写 last_pushed_at
+  · FREQ_THRESHOLD_HOURS = ['daily'=>24, 'weekly'=>168]
+
+15.3 订阅设置页 UI + SubscriptionController
+
+  · SubscriptionController::edit() 加 push/channels/freqs 视图变量
+  · update() 加 channel/freq 校验与保存（不合法回落默认）
+  · edit.blade.php 底部加第三 section "推送设置"：
+    单选推送渠道（不推送/邮件推送）+ 单选推送频率（仅在邮件时可用），
+    用 has-[:checked] 驱动选中态（与 tag-option 一致），
+    不推送时隐藏 freq 但用 hidden input 保底
+
+15.4 Mailable 与邮件模板
+
+  · app/Mail/ReportDigest.php：接收 (User, Collection $reports)；
+    Envelope 用 Address 对象（Laravel 11 不接受数组形式）
+  · resources/views/emails/report-digest.blade.php：
+    · 邮件客户端约束——inline style，不加载外部 CSS/图片/JS
+    · HTML 结构用 table（老邮件客户端兼容性）
+    · 品牌头 + 收件人问候 + 每条报告卡（标题/摘要/匹配标签/链接）+ 页脚
+    · 每条卡最多 4 个匹配标签（前 4 个 domains + regions），超出折叠
+    · 页脚有退订说明（进 /subscription 关闭推送）
+
+15.5 Artisan 命令 lantai:push
+
+  命令：`php artisan lantai:push [--dry-run] [--period=YYYYMMDD]`
+  · 常规模式：过滤 channel='email' 且达 freq 阈值的用户；每个用户推
+    last_pushed_at 之后的新期数（首次推送推全部命中）
+  · 强制模式 --period=X：向所有 channel=email 用户推这一期，忽略时间窗口
+    与订阅过滤（补推/修 bug 用）
+  · --dry-run：只打印要推什么，不发；不写 last_pushed_at
+  · 单个用户失败 log + 继续下一个；汇总输出 "成功 X / 失败 Y"
+  · 未找到 --period 指定的期数时返回 FAILURE（非 0 退出码）
+
+15.6 deploy.sh 加 cron
+
+  在 setup_cron 的 lantai cron 块里加：
+    `0 9 * * * cd $WEB_ROOT/site && php artisan lantai:push >> /var/log/lantai-push.log 2>&1`
+  每日 9 点跑，命令内部按 freq 判断是否真的推。pipeline 8 点跑完 → 9 点推。
+  初始化 log 文件也补上 touch /var/log/lantai-push.log。
+
+15.7 .env.example 加 SMTP 生产配置注释
+
+  MAIL_MAILER=log（本地）+ 注释掉的 MAIL_HOST/PORT/USERNAME/PASSWORD/
+  ENCRYPTION 段，用户上 VPS 直接启用即可。
+
+15.8 测试
+
+  新 tests/Feature/PushTest.php 11 例覆盖：
+  · channel='none' 用户不推
+  · 首次推送（无 last_pushed_at）推全部命中
+  · daily 24h 内不重推、24h 后重推
+  · weekly 7d 内不重推、7d 后重推
+  · 只推 last_pushed_at 之后的新期数（多期测试）
+  · --period 强制推某一期忽略时间窗口
+  · --dry-run 不真发、不写 last_pushed_at
+  · 未找到 --period 指定的期数时命令返回 FAILURE
+  · 用户订阅轴不匹配期数则不推
+  · Mail::fake() 隔离网络；storage/testing/data 假产物目录 tearDown 清理
+
+  测试总数：PHP 16 → 27 例（+11 例 PushTest）；pipeline 103 例不回归。
+
+15.9 遗留
+
+  · 邮件模板 HTML 单通道，无纯文本兜底——HTML 邮件客户端降级时看不到内容，
+    加 Mailables\Attributes\TextHtml 装饰器即可（本轮范围外）
+  · 未做退订链接：MVP 用户改 channel='none' 即停推
+  · 未做邮件模板 A/B 与自定义文案
+  · 未做站内信 / 微信 / 短信（付费 API + 用户同意，超出本轮）
+  · 未做推送失败重试队列：单发失败仅 log，下次 cron 会再试
+  · VPS 侧 SMTP 凭证需用户自备（QQ/网易邮箱或企业 SMTP），未提供内置
+
+
+================================================================
 END OF LOG
 ================================================================
