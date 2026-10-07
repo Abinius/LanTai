@@ -117,6 +117,18 @@ def main() -> int:
             return 2
         log(f"[p4] 读回 ledger {len(ledger.points)} 点,跳过 P3")
 
+    # P2.5:核验源闭环——按台账高频指标名回查发改委/文旅官方口径,写 verify.json。
+    # 网络可能失败,失败不阻断后续 P4/P5,只是报告里无核验附录。
+    if run_p3 and ledger.points:
+        from pipeline.modules import p2_verify_all
+        log("[p2.5] 按台账指标名回查官方核验源")
+        try:
+            hits = p2_verify_all.verify_from_ledger(ledger)
+            p2_verify_all.save(out_dir / "verify.json", hits)
+            log(f"[p2.5] 核验命中 {len(hits)} 条(去重后)")
+        except Exception as e:
+            log(f"[p2.5] 核验异常(不阻断): {e}")
+
     # P4:三维交叉研判
     if run_p4:
         log(f"[p4] 读回 {len(raw_items)} 条 raw,开始研判")

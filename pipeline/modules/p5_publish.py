@@ -6,10 +6,12 @@ LLM 失败时用程序化兜底(标题取首条判断前 20 字,摘要拼前两�
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
 from typing import Optional
 
 from pipeline import llm
-from pipeline.config import PROMPTS_DIR, TEMPLATES_DIR
+from pipeline.config import DATA_DIR, PROMPTS_DIR, TEMPLATES_DIR
 from pipeline.contracts import Analysis, DataPoint, Ledger, Prediction, RawItem, Report
 from pipeline.modules.p3_extract import matched_categories
 
@@ -18,6 +20,7 @@ BRIEF_TEMPLATE = (TEMPLATES_DIR / "report-brief.md").read_text(encoding="utf-8")
 FULL_TEMPLATE = (TEMPLATES_DIR / "report-full.md").read_text(encoding="utf-8")
 
 FEATURED_LIMIT = 20  # 完整版精选数据表上限
+VERIFY_SECTION_LIMIT = 20  # 官方核验附录条目上限
 
 
 def publish(analysis: Analysis, ledger: Ledger, raw_items: list[RawItem], period: str, *, kind: str = "brief") -> Report:
@@ -32,6 +35,7 @@ def publish(analysis: Analysis, ledger: Ledger, raw_items: list[RawItem], period
     findings_md = _render_list(analysis.structural_findings) or "_暂无_"
     predictions_md = _render_predictions(analysis.predictions) or "_暂无_"
     sources_md = _render_sources(ledger.points, analysis.predictions)
+    verify_md = _render_verify(period)
     period_label = _period_label(period)
 
     if kind == "full":
@@ -49,6 +53,7 @@ def publish(analysis: Analysis, ledger: Ledger, raw_items: list[RawItem], period
             .replace("{{featured_table_md}}", featured_table_md)
             .replace("{{point_total}}", point_total)
             .replace("{{full_table_md}}", full_table_md)
+            .replace("{{verify_md}}", verify_md)
             .replace("{{sources_md}}", sources_md)
         )
     else:
@@ -59,6 +64,7 @@ def publish(analysis: Analysis, ledger: Ledger, raw_items: list[RawItem], period
             .replace("{{core_judgments_md}}", core_md)
             .replace("{{structural_findings_md}}", findings_md)
             .replace("{{predictions_md}}", predictions_md)
+            .replace("{{verify_md}}", verify_md)
             .replace("{{sources_md}}", sources_md)
         )
 
@@ -191,3 +197,50 @@ def _period_label(period: str) -> str:
         a, b = period.split("-", 1)
         return f"{a[:4]}-{a[4:6]}-{a[6:8]} ~ {b[:4]}-{b[4:6]}-{b[6:8]}"
     return f"{period[:4]}-{period[4:6]}-{period[6:8]}"
+
+
+def _render_verify(period: str) -> str:
+    """渲染官方核验参考章节。
+
+    读 pipeline/data/<period>/verify.json,把命中的官方文档按关键词分组渲染成清单。
+    verify.json 缺失或空数组时返回占位文本,不阻断出刊。
+    """
+    fp = DATA_DIR / period / "verify.json"
+    if not fp.exists():
+        return "_本期未回查官方核验源_"
+    try:
+        payload = json.loads(fp.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return "_核验数据损坏_"
+
+    hits = payload.get("hits", [])
+    if not hits:
+        return "_本期回查官方核验源无命中_"
+
+    # 按 keyword 分组,保序
+    by_kw: dict[str, list[dict]] = {}
+    for h in hits:
+        by_kw.setdefault(h.get("keyword", "其它"), []).append(h)
+
+    lines = []
+    shown = 0
+    for kw, group in by_kw.items():
+        if shown >= VERIFY_SECTION_LIMIT:
+            break
+        lines.append(f"- **{kw}**")
+        for h in group:
+            if shown >= VERIFY_SECTION_LIMIT:
+                break
+            title = h.get("title", "")
+            url = h.get("url", "")
+            date = h.get("date", "")
+            agency = h.get("agency", "")
+            meta = f"{agency} · {date}" if date else agency
+            lines.append(f"  - [{title}]({url}){f'（{meta}）' if meta else ''}")
+            shown += 1
+
+    total = len(hits)
+    if total > VERIFY_SECTION_LIMIT:
+        lines.append(f"  _另有 {total - shown} 条未展示_")
+
+    return "\n".join(lines)

@@ -18,6 +18,10 @@
 
 {{predictions_md}}
 
+## 附:官方核验参考
+
+{{verify_md}}
+
 ## 附:数据溯源
 
 {{sources_md}}

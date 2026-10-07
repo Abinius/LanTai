@@ -212,6 +212,19 @@ QUEUE_CONNECTION=sync
 LANTAI_DATA_DIR=
 LANTAI_LEDGER_PREVIEW=60
 LANTAI_OG_IMAGE=android-chrome-512x512.png
+
+# 邮件推送：默认 log（不发网络邮件）。要真推送改 smtp 并填下面几项
+MAIL_MAILER=log
+MAIL_FROM_ADDRESS=intelligence@$DOMAIN
+MAIL_FROM_NAME="兰台观局"
+# MAIL_HOST=
+# MAIL_PORT=587
+# MAIL_USERNAME=
+# MAIL_PASSWORD=
+# MAIL_ENCRYPTION=tls
+
+# 情报后台白名单（逗号分隔）。留空则 /admin/* 对所有人 403
+LANTAI_ADMIN_EMAILS=
 EOF
     log ".env 已写入"
 

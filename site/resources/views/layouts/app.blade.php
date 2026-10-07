@@ -102,6 +102,18 @@
               <span class="font-display text-display-md font-bold text-ink group-hover:text-accent transition-colors">订阅设置</span>
               <span class="block label-caption text-muted mt-1">兴趣标签：领域 × 地区</span>
             </a>
+            @if(auth()->user()->isAdmin())
+              <a href="{{ route('admin.sources') }}" @click="menuOpen = false"
+                 class="group block py-4 border-b border-hairline">
+                <span class="font-display text-display-md font-bold text-ink group-hover:text-accent transition-colors">信源状态</span>
+                <span class="block label-caption text-muted mt-1">后台 · 各信源采集与覆盖期数</span>
+              </a>
+              <a href="{{ route('admin.diagnosis') }}" @click="menuOpen = false"
+                 class="group block py-4 border-b border-hairline">
+                <span class="font-display text-display-md font-bold text-ink group-hover:text-accent transition-colors">期数诊断</span>
+                <span class="block label-caption text-muted mt-1">后台 · 耗时/台账/核验一览</span>
+              </a>
+            @endif
           @endauth
         </div>
       </div>

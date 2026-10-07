@@ -55,4 +55,24 @@ class User extends Authenticatable
     {
         return $this->hasOne(Subscription::class);
     }
+
+    /**
+     * 是否可访问情报后台。白名单来自 config('lantai.admin_emails')
+     * （LANTAI_ADMIN_EMAILS 环境变量，逗号分隔）；留空则无人是管理员。
+     *
+     * 比对用归一后的小写邮箱，避免大小写差异导致白名单命中失败
+     * （同 normalizeEmail 那条链路的教训）。
+     */
+    public function isAdmin(): bool
+    {
+        $admins = config('lantai.admin_emails', []);
+        if (empty($admins)) {
+            return false;
+        }
+        $normalized = array_map(
+            fn ($e) => self::normalizeEmail($e),
+            $admins
+        );
+        return in_array(self::normalizeEmail($this->email), $normalized, true);
+    }
 }

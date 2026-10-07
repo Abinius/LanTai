@@ -30,4 +30,14 @@ return [
 
     /* 社交媒体分享预览图（相对 public/ 的路径或完整 URL） */
     'og_image'   => env('LANTAI_OG_IMAGE', 'android-chrome-512x512.png'),
+
+    /*
+     * 情报后台（PRD §3.7）白名单邮箱，逗号分隔。留空则无人可访问后台。
+     * 后台暴露信源采集状态与期数诊断（含内部路径、LLM 调用量），不宜对所有
+     * 订阅者开放——订阅端是公开注册的。
+     */
+    'admin_emails' => array_values(array_filter(array_map(
+        'trim',
+        explode(',', (string) env('LANTAI_ADMIN_EMAILS', ''))
+    ))),
 ];

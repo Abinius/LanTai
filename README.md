@@ -10,7 +10,7 @@
 
 ## 当前状态
 
-**M1–M5 全部交付（2026-10-06），部署脚本就绪。**
+**M1–M5 全部交付（2026-10-06），v3.1 迭代 W1–W4 交付，部署脚本就绪。**
 
 | 里程碑 | 状态 | 内容 |
 |---|---|---|
@@ -19,6 +19,10 @@
 | M3 出刊引擎 | ✅ | p5 模板驱动出刊，产出深度研判报告 |
 | M4 前端 | ✅ | Laravel 站（Signify 风格），读取内核产物渲染 |
 | M5 订阅 | ✅ | auth + 兴趣标签（领域×地区）+ 我的情报 + 推送通道 |
+| W1 出刊双轨 | ✅ | brief/full 分流 + `--verify` 官方口径回查（发改委/文旅） |
+| W2 数据质量 | ✅ | pub_date 三级回落 + 地市→省映射 + 单位校验 + 跨文章去重 |
+| W3 推送通道 | ✅ | 邮件订阅闭环：channel/freq 设置 + `lantai:push` + cron |
+| W4 核验闭环+后台 | ✅ | P2.5 自动回查官方源（报告附录）+ 信源状态/期数诊断后台 |
 | 部署 | ✅ | 一键部署脚本（Ubuntu/CentOS 双 OS） |
 
 ## 一键出刊
@@ -97,6 +101,15 @@ tail -f /var/www/lantai/site/storage/logs/laravel.log
 # 查看内核日志
 tail -f /var/log/lantai-pipeline.log
 
+# 查看推送日志
+tail -f /var/log/lantai-push.log
+
+# 手工跑一次邮件推送（dry-run 只打印不发送）
+cd /var/www/lantai/site && php artisan lantai:push --dry-run
+
+# 补推某一期到所有邮件订阅用户
+cd /var/www/lantai/site && php artisan lantai:push --period=20261001-20261005
+
 # 查看定时任务
 crontab -l
 
@@ -108,6 +121,13 @@ cd /var/www/lantai
 git pull
 cd site && composer install --no-dev && npm install && npm run build:css
 ```
+
+**邮件推送需先配 SMTP**：`.env` 里 `MAIL_MAILER` 从 `log` 改为 `smtp`，
+并填 `MAIL_HOST`/`MAIL_PORT`/`MAIL_USERNAME`/`MAIL_PASSWORD`/`MAIL_ENCRYPTION`
+（模板见 `site/.env.example`）。cron 每日 9 点自动跑 `lantai:push`。
+
+**情报后台**：`.env` 里 `LANTAI_ADMIN_EMAILS` 填运维者邮箱（逗号分隔），
+登录后菜单出现「信源状态」「期数诊断」；留空则 `/admin/*` 对所有人 403。
 
 ### 5. 目录结构
 
