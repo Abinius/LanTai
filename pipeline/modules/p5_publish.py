@@ -132,6 +132,9 @@ def _render_data_table(points: list[DataPoint]) -> str:
     for p in points:
         # 未核验点没有结构化数值,把正则命中的原文放进数值列,否则整行只有个链接
         val = p.value or (p.raw_text if p.llm_unverified else None)
+        # 非未核验点空值一律跳过:避免渲染出"None亿元"这类脏行
+        if not val and not p.llm_unverified:
+            continue
         rows.append(
             f"| {_cell(p.indicator)} | {_cell(val)} | {_cell(p.unit)} | "
             f"{_cell(p.yoy)} | {_cell(p.region)} | {_cell(p.agency)} | [↗]({p.source_url}) |"
