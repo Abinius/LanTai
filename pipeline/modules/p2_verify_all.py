@@ -16,11 +16,18 @@
 from __future__ import annotations
 
 import json
+import time
 from pathlib import Path
+from typing import Callable
 
 from pipeline.contracts import Ledger
 from pipeline.modules import verify
 from pipeline.modules.p3_extract import matched_categories
+
+# 核验阶段的总时间预算(秒)。核验源不可达时,_http_get 每次要等满超时
+# (2 源 × 2 页 × 20s = 80s/词),8 个词能拖十几分钟,把每日 cron 卡死。
+# 到点即收手、剩余关键词跳过——核验是附录,不值得挡住主流水线。
+DEFAULT_TIME_BUDGET = 120.0
 
 # 领域 → 具体核验关键词。发改委/文旅常发文的具体口径,检索效率高。
 # 不用领域名本身("增长"太泛),挑该领域下最常见的具体指标名。
@@ -62,16 +69,25 @@ def verify_from_ledger(
     max_terms: int = 8,
     max_hits_per_term: int = 3,
     total_limit: int = 30,
+    time_budget: float = DEFAULT_TIME_BUDGET,
+    clock: Callable[[], float] = time.monotonic,
 ) -> list[dict]:
     """对每个关键词回查核验源,汇总去重后返回 hits(dict 列表)。
 
     每条 hit 附加 `keyword` 字段标明触发命中的台账领域关键词。
+
+    time_budget 是**整个阶段**的墙钟预算,不是单次查询的:预算耗尽后
+    剩余关键词直接跳过并返回已收集的结果。clock 可注入以便测试。
     """
     terms = derive_search_terms(ledger, max_terms=max_terms)
     out: list[dict] = []
     seen_urls: set[str] = set()
+    started = clock()
 
     for term in terms:
+        if clock() - started >= time_budget:
+            break  # 预算耗尽,剩余词跳过(核验是附录,不挡住主流水线)
+
         try:
             hits = verify.search(term, max_pages=2)
         except Exception:
@@ -83,9 +99,8 @@ def verify_from_ledger(
             if h.url in seen_urls or count >= max_hits_per_term:
                 continue
             seen_urls.add(h.url)
-            row = {"keyword": term, "title": h.title, "url": h.url,
-                   "source": h.source, "date": h.date, "agency": h.agency}
-            out.append(row)
+            out.append({"keyword": term, "title": h.title, "url": h.url,
+                        "source": h.source, "date": h.date, "agency": h.agency})
             count += 1
             if len(out) >= total_limit:
                 return out

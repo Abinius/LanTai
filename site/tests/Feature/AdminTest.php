@@ -94,6 +94,64 @@ class AdminTest extends TestCase
             ->assertSee('20261001-20261005');
     }
 
+    /**
+     * 耗时必须是「完整跑一期」的耗时，不能被之后的 --republish/--reanalyze 覆盖。
+     *
+     * run.log 是追加写的：一期先全量跑（含 P3），之后补标签跑 --republish，
+     * 末段只有几秒。早期实现取「最后一个开始 + 最后一个结束」，
+     * 于是诊断页显示 5s —— 而这一期的真实成本是分钟级。
+     */
+    public function test_duration_reflects_full_run_not_republish(): void
+    {
+        config(['lantai.admin_emails' => ['boss@example.com']]);
+        $admin = $this->user('boss@example.com');
+
+        $base = "{$this->dataDir}/20261001-20261005";
+        // 全量跑（含 P3 台账写入）：09:00:00 → 09:02:30
+        // 之后 --republish（只有 P4/P5）：10:00:00 → 10:00:05
+        file_put_contents("{$base}/run.log",
+            "[09:00:00] === 兰台观局 v3.0 开跑 period=20261001-20261005 days=5 ===\n"
+            . "[09:01:00] [p3] 台账写入 /data/ledger.json points=68\n"
+            . "[09:02:30] === 完成 退出码=0 ===\n"
+            . "[10:00:00] === 兰台观局 v3.0 开跑 period=20261001-20261005 days=5 ===\n"
+            . "[10:00:00] --republish:跳过 P2/P3/P4,使用已有数据\n"
+            . "[10:00:05] === 完成 退出码=0 ===\n"
+        );
+
+        $html = $this->actingAs($admin)->get(route('admin.diagnosis'))->assertOk()->getContent();
+
+        $this->assertStringContainsString('150s', $html,
+            '耗时应取含 P3 的全量跑（150s），而不是之后 --republish 的 5s');
+        $this->assertStringNotContainsString('>5s<', $html);
+    }
+
+    /**
+     * 信源状态页的「期数」列必须是期数本体，不能是路径片段。
+     *
+     * 曾用 basename(dirname($periodDir)) 取期数——$periodDir 形如
+     * data/<period>/raw/<source>，dirname 去掉 source 后 basename 得到
+     * 「raw」，于是每行期数都渲染成 "raw"，而真期数一个都不出现。
+     */
+    public function test_sources_page_lists_real_periods_not_path_segment(): void
+    {
+        config(['lantai.admin_emails' => ['boss@example.com']]);
+        $admin = $this->user('boss@example.com');
+
+        $html = $this->actingAs($admin)
+            ->get(route('admin.sources'))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringContainsString('20261001-20261005', $html,
+            '信源状态页应列出真实期数');
+
+        // 「期数」列里不得出现路径片段 raw
+        preg_match_all('/<td class="py-2\.5 font-mono">([^<]*)<\/td>/', $html, $m);
+        $filled = array_values(array_filter(array_map('trim', $m[1] ?? [])));
+        $this->assertNotEmpty($filled, '应渲染出期数行');
+        $this->assertNotContains('raw', $filled, '期数列出现了路径片段 raw');
+    }
+
     // ============ helpers ============
 
     private function user(string $email): User

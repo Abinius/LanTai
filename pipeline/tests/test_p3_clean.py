@@ -48,6 +48,21 @@ class TestUrlDate(unittest.TestCase):
         self.assertIsNone(self._url_date("https://example.com/x?t=20261306"))
         self.assertIsNone(self._url_date("https://example.com/x?t=20260001"))
 
+    def test_content_path_also_validates(self):
+        """content 路径与 query 路径的校验必须一致，非法日期不能放行。
+
+        /content/202613/45/ 这种路径要能构造出来就说明解析没验月/日，
+        会往台账里写一个不存在的日期，违背「不造假」红线。
+        """
+        self.assertIsNone(self._url_date(
+            "http://paper.people.com.cn/rmrb/pc/content/202613/45/content_1.html"))
+        self.assertIsNone(self._url_date(
+            "http://paper.people.com.cn/rmrb/pc/content/202600/00/content_1.html"))
+        # 合法路径仍要正常解析
+        self.assertEqual(
+            self._url_date("http://paper.people.com.cn/rmrb/pc/content/202602/28/content_1.html"),
+            "20260228")
+
 
 class TestSafeDate(unittest.TestCase):
     def _safe(self, s):

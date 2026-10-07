@@ -89,12 +89,18 @@ class AdminController extends Controller
                 }
             }
 
-            // 按期数统计
+            // 按期数统计。注意目录层级是 data/<period>/raw/<source>：
+            // 期数是 raw 的**祖父**目录名，不是父目录（父目录恒为 "raw"）。
             $rows = [];
-            foreach (glob("{$dir}/*/raw/{$name}", GLOB_ONLYDIR) ?: [] as $periodDir) {
+            foreach (glob("{$dir}/*", GLOB_ONLYDIR) ?: [] as $periodDir) {
+                $period = basename($periodDir);
+                $srcDir = "{$periodDir}/raw/{$name}";
+                if (! is_dir($srcDir)) {
+                    continue;
+                }
                 $rows[] = [
-                    'period' => basename(dirname($periodDir)),
-                    'count' => count(glob("{$periodDir}/*.json") ?: []),
+                    'period' => $period,
+                    'count' => count(glob("{$srcDir}/*.json") ?: []),
                 ];
             }
             // 期数按起点降序
@@ -197,45 +203,64 @@ class AdminController extends Controller
     }
 
     /**
-     * 从 run.log 解析单次运行的耗时（秒）。
+     * 从 run.log 解析「完整跑一期」的耗时（秒）。
      *
-     * 找 "=== 兰台观局 v3.0 开跑" 与紧随其后的 "=== 完成" 两次时间戳，
-     * 差值即最近一次运行的耗时。多段运行取最后一段。
+     * run.log 是**追加写**的：同一期可能先后跑过全量、--reanalyze、--republish。
+     * 取末段会得到 --republish 的几秒（它只跑 P5），这不是这一期的真实成本。
+     * 故按「开跑 → 完成」切段，优先返回**最后一段真正跑过 P3**（日志含
+     * 「[p3] 台账写入」）的耗时；一段都没有则退回最后一段；再不行返回 -1。
+     *
+     * 时间戳只有 HH:MM:SS，跨零点的段按 end < start 判定为次日补一天。
      */
     private function parseDuration(string $logPath): float
     {
         if (! File::exists($logPath)) {
             return -1.0;
         }
-        $content = File::get($logPath);
-        $startPattern = '/^\[(\d{2}):(\d{2}):(\d{2})\] === 兰台观局 v[\d.]+ 开跑/';
-        $endPattern = '/^\[(\d{2}):(\d{2}):(\d{2})\] === 完成/';
 
-        $lines = preg_split('/\n/', $content) ?: [];
-        $lastStart = null;
-        $lastEnd = null;
-        $lastStartTs = null;
-        $lastEndTs = null;
-        $day = date('Y-m-d');
+        $lines = preg_split('/\r?\n/', File::get($logPath)) ?: [];
+        $segments = [];   // 每段：['start' => int, 'end' => int|null, 'has_p3' => bool]
+        $current = null;
 
         foreach ($lines as $line) {
-            if (preg_match($startPattern, $line, $m)) {
-                $lastStart = [$m[1], $m[2], $m[3]];
-                $lastStartTs = $this->makeTs($day, $m[1], $m[2], $m[3]);
-            } elseif (preg_match($endPattern, $line, $m)) {
-                $lastEnd = [$m[1], $m[2], $m[3]];
-                $lastEndTs = $this->makeTs($day, $m[1], $m[2], $m[3]);
+            if (preg_match('/^\[(\d{2}):(\d{2}):(\d{2})\] === 兰台观局 v[\d.]+ 开跑/', $line, $m)) {
+                if ($current !== null) {
+                    $segments[] = $current;
+                }
+                $current = ['start' => $this->secs($m[1], $m[2], $m[3]), 'end' => null, 'has_p3' => false];
+                continue;
+            }
+            if ($current === null) {
+                continue;
+            }
+            if (preg_match('/^\[(\d{2}):(\d{2}):(\d{2})\] === 完成/', $line, $m)) {
+                $current['end'] = $this->secs($m[1], $m[2], $m[3]);
+            } elseif (str_contains($line, '[p3] 台账写入')) {
+                $current['has_p3'] = true;
             }
         }
+        if ($current !== null) {
+            $segments[] = $current;
+        }
 
-        if ($lastStartTs === null || $lastEndTs === null) {
+        // 优先取最后一段跑过 P3 的；否则最后一段有结束时间的
+        $withP3 = array_values(array_filter($segments, fn ($s) => $s['has_p3'] && $s['end'] !== null));
+        $complete = array_values(array_filter($segments, fn ($s) => $s['end'] !== null));
+        $pick = $withP3 ? end($withP3) : ($complete ? end($complete) : null);
+        if ($pick === null) {
             return -1.0;
         }
-        return $lastEndTs - $lastStartTs;
+
+        $delta = $pick['end'] - $pick['start'];
+        if ($delta < 0) {
+            $delta += 86400;  // 跨零点
+        }
+        return (float) $delta;
     }
 
-    private function makeTs(string $day, string $h, string $m, string $s): int
+    /** HH:MM:SS → 当日秒数 */
+    private function secs(string $h, string $m, string $s): int
     {
-        return strtotime("{$day} {$h}:{$m}:{$s}");
+        return ((int) $h) * 3600 + ((int) $m) * 60 + (int) $s;
     }
 }

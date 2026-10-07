@@ -181,6 +181,34 @@ class TestVerifyFromLedger(unittest.TestCase):
         hits = p2_verify_all.verify_from_ledger(Ledger(period="p"))
         self.assertEqual(hits, [])
 
+    def test_stops_at_time_budget(self):
+        """核验源不可达时最坏每词要等 2 源 × 2 页 × 超时，8 词能拖十几分钟，
+        会把每日 cron 卡死。总预算到点必须收手，剩余词直接跳过。"""
+        ledger = self._ledger_with_domains(["GDP", "CPI", "固定资产投资", "进出口"])
+        seen = []
+
+        fake_clock = [0.0]
+
+        def fake_search(term, **kw):
+            seen.append(term)
+            fake_clock[0] += 100.0  # 每次查询耗 100 秒（模拟超时）
+            from pipeline.modules.verify import VerifyHit
+            return [VerifyHit(title=f"{term} 文档", url=f"http://u/{term}",
+                              source="ndrc", date="20261001", agency="ndrc")]
+
+        with patch("pipeline.modules.verify.search", side_effect=fake_search):
+            hits = p2_verify_all.verify_from_ledger(
+                ledger,
+                max_hits_per_term=3,
+                total_limit=30,
+                time_budget=150.0,
+                clock=lambda: fake_clock[0],
+            )
+
+        # 预算 150s / 每次 100s → 最多查 2 个词
+        self.assertLessEqual(len(seen), 2, f"超预算仍继续查询: {seen}")
+        self.assertEqual(len(seen), 2)
+
 
 class TestSave(unittest.TestCase):
     def test_writes_verify_json(self):

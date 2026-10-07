@@ -117,11 +117,11 @@ def main() -> int:
             return 2
         log(f"[p4] 读回 ledger {len(ledger.points)} 点,跳过 P3")
 
-    # P2.5:核验源闭环——按台账高频指标名回查发改委/文旅官方口径,写 verify.json。
+    # P2.5:核验源闭环——按当期台账主要领域派生口径词,回查发改委/文旅,写 verify.json。
     # 网络可能失败,失败不阻断后续 P4/P5,只是报告里无核验附录。
     if run_p3 and ledger.points:
         from pipeline.modules import p2_verify_all
-        log("[p2.5] 按台账指标名回查官方核验源")
+        log("[p2.5] 按台账主要领域回查官方核验源")
         try:
             hits = p2_verify_all.verify_from_ledger(ledger)
             p2_verify_all.save(out_dir / "verify.json", hits)

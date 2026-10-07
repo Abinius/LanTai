@@ -138,6 +138,43 @@
     </section>
   @endif
 
+  {{-- 附：官方核验参考（P2.5 按台账主要领域回查发改委/文旅，命中才渲染） --}}
+  @if(!empty($verify))
+    <section class="max-w-5xl mx-auto px-6 pb-12">
+      <div class="hairline-b pb-3 mb-7 flex items-baseline gap-3">
+        <span class="label-caption text-muted">附</span>
+        <h2 class="font-display text-display-md font-bold text-ink">官方核验参考</h2>
+        <span class="label-caption text-muted ml-auto">核验源：发改委 / 文化和旅游部</span>
+      </div>
+      <p class="text-xs text-muted mb-5 leading-relaxed">
+        按本期台账主要领域回查官方政策口径得到的相关文件，供交叉印证；不等于对该数据点的直接背书。
+      </p>
+      <div class="space-y-6">
+        @foreach($verify as $keyword => $hits)
+          <div>
+            <p class="label-caption text-accent mb-3">{{ $keyword }}</p>
+            <ul class="space-y-3">
+              @foreach($hits as $hit)
+                <li class="flex gap-3 items-baseline">
+                  <span class="label-caption text-muted tabular-nums flex-shrink-0">{{ str_pad((string) $loop->iteration, 2, '0', STR_PAD_LEFT) }}</span>
+                  <div class="min-w-0">
+                    <a href="{{ $hit['url'] }}" target="_blank" rel="noopener noreferrer"
+                       class="text-sm text-ink hover:text-accent transition-colors">{{ $hit['title'] }}</a>
+                    @if($hit['agency'] || $hit['date'])
+                      <span class="label-caption text-muted ml-2">
+                        {{ $hit['agency'] }}@if($hit['agency'] && $hit['date']) · @endif{{ $hit['date'] }}
+                      </span>
+                    @endif
+                  </div>
+                </li>
+              @endforeach
+            </ul>
+          </div>
+        @endforeach
+      </div>
+    </section>
+  @endif
+
   {{-- 口径说明 --}}
   <footer class="max-w-3xl mx-auto px-6 pb-20">
     <div class="border border-hairline p-6">

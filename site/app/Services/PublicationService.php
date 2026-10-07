@@ -107,9 +107,42 @@ class PublicationService
             'point_total' => count($points),
             'unverified'  => array_filter($points, fn ($p) => !empty($p['llm_unverified'])),
             'sources'     => $this->sources($preview, $analysis),
+            'verify'      => $this->verifyHits($period),
             'period'      => $period,
             'period_label' => self::periodLabel($period),
         ];
+    }
+
+    /**
+     * 官方核验命中（P2.5 内核产出 verify.json）。
+     *
+     * 按 keyword 分组，与报告 md 的「附:官方核验参考」同格式。
+     * 文件缺失或损坏返回空数组——不是每期都能在核验源里命中，不算异常。
+     *
+     * @return array<string, array<int, array{title:string,url:string,date:string,agency:string}>>
+     */
+    public function verifyHits(string $period): array
+    {
+        $data = $this->readJson($this->dataDir() . '/' . $period . '/verify.json');
+        $hits = $data['hits'] ?? [];
+        if (! is_array($hits)) {
+            return [];
+        }
+
+        $grouped = [];
+        foreach ($hits as $h) {
+            if (! is_array($h) || empty($h['url'])) {
+                continue;
+            }
+            $grouped[$h['keyword'] ?? '其它'][] = [
+                'title'  => (string) ($h['title'] ?? ''),
+                'url'    => (string) $h['url'],
+                'date'   => (string) ($h['date'] ?? ''),
+                'agency' => (string) ($h['agency'] ?? ''),
+            ];
+        }
+
+        return $grouped;
     }
 
     /** 去重的数据溯源清单：台账点在前，研判引用在后 */
