@@ -99,12 +99,16 @@ class Analysis:
 
 @dataclass
 class Report:
-    """P5 出刊产物:深度研判报告 Markdown。"""
+    """P5 出刊产物:深度研判报告 Markdown。
+
+    kind: "brief"(日/周报,只给判断) | "full"(月报,判断+精选数据+折叠台账)
+    """
 
     period: str
     title: str
     summary: str
     content_md: str
+    kind: str = "brief"
     generated_at: str = ""
     source_count: int = 0  # 引用的去重 source_url 数
     domains: list[str] = field(default_factory=list)  # 命中的领域标签(九类),供订阅匹配
@@ -119,6 +123,7 @@ class Report:
                 "period": self.period,
                 "title": self.title,
                 "summary": self.summary,
+                "kind": self.kind,
                 "generated_at": self.generated_at,
                 "source_count": self.source_count,
                 "domains": self.domains,

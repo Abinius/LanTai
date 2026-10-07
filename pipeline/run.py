@@ -42,7 +42,16 @@ def main() -> int:
     parser.add_argument("--reextract", action="store_true", help="跳过 P2,从已有 raw 重跑 P3")
     parser.add_argument("--reanalyze", action="store_true", help="跳过 P2/P3,从已有 ledger+raw 重跑 P4")
     parser.add_argument("--republish", action="store_true", help="跳过 P2/P3/P4,从已有 ledger+analysis 只重跑 P5")
+    parser.add_argument("--mode", choices=["brief", "full"], help="出刊模式(默认按天数派生:≤7 brief, >7 full)")
+    parser.add_argument("--verify", metavar="<keyword>", help="按指标名回查官方核验源(不跑主流水线)")
     args = parser.parse_args()
+
+    # --verify 独立分支:按指标名回查发改委/文旅官方口径,不进主流水线
+    if args.verify:
+        from pipeline.modules import verify
+        hits = verify.search(args.verify)
+        print(json.dumps([asdict(h) for h in hits], ensure_ascii=False, indent=2))
+        return 0
 
     skip_map = {"republish": "P2/P3/P4", "reanalyze": "P2/P3", "reextract": "P2"}
 
@@ -55,6 +64,9 @@ def main() -> int:
     out_dir = DATA_DIR / period
     (out_dir / "raw").mkdir(parents=True, exist_ok=True)
     log_path = out_dir / "run.log"
+
+    # 出刊模式派生:显式 --mode 优先,否则按天数(≤7 brief, >7 full)
+    kind = args.mode or ("full" if len(days) > 7 else "brief")
 
     def log(msg: str) -> None:
         line = f"[{time.strftime('%H:%M:%S')}] {msg}"
@@ -140,9 +152,9 @@ def main() -> int:
         return 1
 
     # P5:出刊引擎(模板驱动 + 变量注入)
-    log("[p5] 开始出刊")
+    log(f"[p5] 开始出刊 kind={kind}")
     try:
-        report = p5_publish.publish(analysis, ledger, raw_items, period)
+        report = p5_publish.publish(analysis, ledger, raw_items, period, kind=kind)
     except Exception as e:
         log(f"[p5] 异常: {e}\n{traceback.format_exc()}")
         report = p5_publish.Report(period=period, title=f"{period} 报告（出刊失败）", summary="", content_md="")

@@ -14,10 +14,13 @@ from pipeline.contracts import Analysis, DataPoint, Ledger, Prediction, RawItem,
 from pipeline.modules.p3_extract import matched_categories
 
 PUBLISH_PROMPT = (PROMPTS_DIR / "publish.md").read_text(encoding="utf-8")
-TEMPLATE = (TEMPLATES_DIR / "report-template.md").read_text(encoding="utf-8")
+BRIEF_TEMPLATE = (TEMPLATES_DIR / "report-brief.md").read_text(encoding="utf-8")
+FULL_TEMPLATE = (TEMPLATES_DIR / "report-full.md").read_text(encoding="utf-8")
+
+FEATURED_LIMIT = 20  # 完整版精选数据表上限
 
 
-def publish(analysis: Analysis, ledger: Ledger, raw_items: list[RawItem], period: str) -> Report:
+def publish(analysis: Analysis, ledger: Ledger, raw_items: list[RawItem], period: str, *, kind: str = "brief") -> Report:
     title, summary = _llm_title_summary(analysis, raw_items, period)
     # LLM 失败兜底:标题取首条判断,摘要拼结构性发现
     if not title:
@@ -28,20 +31,36 @@ def publish(analysis: Analysis, ledger: Ledger, raw_items: list[RawItem], period
     core_md = _render_list(analysis.core_judgments) or "_暂无_"
     findings_md = _render_list(analysis.structural_findings) or "_暂无_"
     predictions_md = _render_predictions(analysis.predictions) or "_暂无_"
-    data_table_md = _render_data_table(ledger.points)
     sources_md = _render_sources(ledger.points, analysis.predictions)
     period_label = _period_label(period)
 
-    content = (
-        TEMPLATE.replace("{{title}}", title)
-        .replace("{{period_label}}", period_label)
-        .replace("{{summary}}", summary)
-        .replace("{{core_judgments_md}}", core_md)
-        .replace("{{structural_findings_md}}", findings_md)
-        .replace("{{predictions_md}}", predictions_md)
-        .replace("{{data_table_md}}", data_table_md)
-        .replace("{{sources_md}}", sources_md)
-    )
+    if kind == "full":
+        featured = _select_featured(ledger.points, analysis.predictions)
+        featured_table_md = _render_data_table(featured) if featured else "_本期无被预测引用的数据点_"
+        full_table_md = _render_data_table(ledger.points)
+        point_total = str(len(ledger.points))
+        content = (
+            FULL_TEMPLATE.replace("{{title}}", title)
+            .replace("{{period_label}}", period_label)
+            .replace("{{summary}}", summary)
+            .replace("{{core_judgments_md}}", core_md)
+            .replace("{{structural_findings_md}}", findings_md)
+            .replace("{{predictions_md}}", predictions_md)
+            .replace("{{featured_table_md}}", featured_table_md)
+            .replace("{{point_total}}", point_total)
+            .replace("{{full_table_md}}", full_table_md)
+            .replace("{{sources_md}}", sources_md)
+        )
+    else:
+        content = (
+            BRIEF_TEMPLATE.replace("{{title}}", title)
+            .replace("{{period_label}}", period_label)
+            .replace("{{summary}}", summary)
+            .replace("{{core_judgments_md}}", core_md)
+            .replace("{{structural_findings_md}}", findings_md)
+            .replace("{{predictions_md}}", predictions_md)
+            .replace("{{sources_md}}", sources_md)
+        )
 
     source_count = len(_all_sources(ledger.points, analysis.predictions))
     domains, regions = _tags(ledger.points)
@@ -50,6 +69,7 @@ def publish(analysis: Analysis, ledger: Ledger, raw_items: list[RawItem], period
         title=title,
         summary=summary,
         content_md=content,
+        kind=kind,
         source_count=source_count,
         domains=domains,
         regions=regions,
@@ -117,6 +137,14 @@ def _render_data_table(points: list[DataPoint]) -> str:
             f"{_cell(p.yoy)} | {_cell(p.region)} | {_cell(p.agency)} | [↗]({p.source_url}) |"
         )
     return "\n".join([header, sep, *rows])
+
+
+def _select_featured(points: list[DataPoint], preds: list[Prediction]) -> list[DataPoint]:
+    """精选数据:被预测 data_refs 引用的台账点,按原文顺序取前 FEATURED_LIMIT 条。"""
+    cited = {r for p in preds for r in p.data_refs if r}
+    if not cited:
+        return []
+    return [p for p in points if p.source_url in cited][:FEATURED_LIMIT]
 
 
 def _render_sources(points: list[DataPoint], preds: list[Prediction]) -> str:

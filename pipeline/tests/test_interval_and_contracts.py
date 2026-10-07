@@ -113,7 +113,7 @@ class TestContracts(unittest.TestCase):
                    domains=["投资"], regions=["全国"])
         data = json.loads(r.to_json())
         self.assertEqual(set(data.keys()),
-                         {"period", "title", "summary", "generated_at", "source_count",
+                         {"period", "title", "summary", "kind", "generated_at", "source_count",
                           "domains", "regions", "content_md"})
         self.assertEqual(data["domains"], ["投资"])
         self.assertEqual(data["regions"], ["全国"])
